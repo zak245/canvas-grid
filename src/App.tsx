@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { GridContainer } from './react/GridContainer';
 import { AppShell } from './components/layout/AppShell';
 import { AddColumnModal } from './components/AddColumnModal';
+import { ColumnsDrawer } from './components/ColumnsDrawer';
 import { generateMockData } from './utils/mockData';
 import type { GridColumn } from './types/grid';
 import type { GridConfig } from './config/GridConfig';
+import { GridEngine } from './engine/GridEngine';
 
 // Generate initial data - 10 rows for testing add row experience
 const { columns: initialCols, rows: initialRows } = generateMockData(10, false);
@@ -91,12 +93,29 @@ const gridConfig: Partial<GridConfig> = {
     }
 };
 
+// Create instance outside component
+const gridEngineInstance = new GridEngine(gridConfig as any);
+
 function App() {
     const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
-    const [columns, setColumns] = useState<GridColumn[]>(initialCols);
+    const [isColumnsDrawerOpen, setIsColumnsDrawerOpen] = useState(false);
+    const [columns, setColumns] = useState<GridColumn[]>([]);
 
-    const handleAddColumn = (newColumn: GridColumn) => {
-        setColumns([...columns, newColumn]);
+    useEffect(() => {
+        // Subscribe to engine changes to update local state for Drawer
+        const unsubscribe = gridEngineInstance.subscribeToDataChange(() => {
+            setColumns(gridEngineInstance.model.getColumns());
+        });
+        
+        // Initial load
+        setColumns(gridEngineInstance.model.getColumns());
+        
+        return unsubscribe;
+    }, []);
+
+    const handleAddColumn = async (newColumn: GridColumn) => {
+        await gridEngineInstance.addColumn(newColumn);
+        setIsAddColumnOpen(false);
     };
 
     const handleAddRow = async () => {
@@ -109,14 +128,36 @@ function App() {
     };
 
     return (
-        <AppShell onAddColumn={() => setIsAddColumnOpen(true)} onAddRow={handleAddRow}>
+        <AppShell 
+            onAddColumn={() => setIsColumnsDrawerOpen(true)} 
+            onAddRow={handleAddRow}
+        >
             <GridContainer
-                config={gridConfig}  // NEW: Pass config
+                config={gridConfig} 
+                onAddColumnClick={(column) => {
+                    if (column) {
+                        handleAddColumn(column);
+                    } else {
+                        setIsAddColumnOpen(true);
+                    }
+                }}
             />
+            
             <AddColumnModal
                 isOpen={isAddColumnOpen}
                 onClose={() => setIsAddColumnOpen(false)}
                 onSubmit={handleAddColumn}
+            />
+
+            <ColumnsDrawer
+                isOpen={isColumnsDrawerOpen}
+                onClose={() => setIsColumnsDrawerOpen(false)}
+                columns={columns}
+                onToggleVisibility={(colId, visible) => gridEngineInstance.setColumnVisibility(colId, visible)}
+                onAddColumn={() => {
+                    setIsColumnsDrawerOpen(false);
+                    setIsAddColumnOpen(true);
+                }}
             />
         </AppShell>
     );

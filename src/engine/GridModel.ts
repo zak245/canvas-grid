@@ -31,6 +31,10 @@ export class GridModel {
         return this.columns;
     }
 
+    getVisibleColumns(): GridColumn[] {
+        return this.columns.filter(col => col.visible !== false);
+    }
+
     getColumn(index: number): GridColumn | undefined {
         return this.columns[index];
     }

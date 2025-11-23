@@ -11,20 +11,24 @@ interface GridContainerProps {
     rows?: GridRow[];
     onColumnsUpdate?: (columns: GridColumn[]) => void;
     config?: Partial<GridConfig>;  // NEW: Optional config
+    onAddColumnClick?: (column?: GridColumn) => void; // Updated to allow passing new column directly
 }
 
 export const GridContainer: React.FC<GridContainerProps> = ({
     columns = [],
     rows = [],
     onColumnsUpdate,
-    config  // NEW
+    config,  // NEW
+    onAddColumnClick
 }) => {
     const { canvasRef, engine } = useGridEngine(config);  // NEW: Pass config
     const [scrollState, setScrollState] = useState({ scrollLeft: 0, scrollTop: 0 });
     const [visibleRowIndices, setVisibleRowIndices] = useState<number[]>([]);
     
     // Get columns/rows from engine.model when using config, otherwise from props
-    const effectiveColumns = config ? engine.model.getColumns() : columns;
+    // Use getVisibleColumns() to respect hidden state
+    const effectiveColumns = config ? engine.model.getVisibleColumns() : columns;
+    const allColumns = config ? engine.model.getColumns() : columns; // Pass all columns for hidden list
     const effectiveRows = config ? engine.model.getAllRows() : rows;
     const [dataVersion, setDataVersion] = useState(0); // Force re-render on data change
     const [sortState, setSortState] = useState<ColumnSort[]>([]); // Local state for sort UI
@@ -118,7 +122,8 @@ export const GridContainer: React.FC<GridContainerProps> = ({
             const deltaY = e.deltaY;
 
             // Calculate total grid dimensions
-            const totalWidth = effectiveColumns.reduce((sum, col) => sum + col.width, 0);
+            // Add 50px buffer for the "Add Column" ghost header
+            const totalWidth = effectiveColumns.reduce((sum, col) => sum + col.width, 0) + 50;
             const totalHeight = effectiveRows.length * engine.theme.rowHeight;
             const viewportState = engine.viewport.getState();
 
@@ -156,11 +161,17 @@ export const GridContainer: React.FC<GridContainerProps> = ({
             <div className="absolute top-0 left-0 right-0 z-10">
                 <ColumnHeaders
                     columns={effectiveColumns}
+                    allColumns={allColumns}
                     scrollLeft={scrollState.scrollLeft}
                     rowHeaderWidth={engine.theme.rowHeaderWidth}
                     sortState={sortState}
                     onSort={(colId, direction) => engine.sort(colId, direction)}
                     onSelectColumn={(colId, multi, range) => engine.selectColumn(colId, multi, range)}
+                    onResize={(colId, width) => engine.resizeColumn(colId, width)}
+                    onAutoResize={(colId) => engine.autoResizeColumn(colId)}
+                    onHide={(colId) => engine.setColumnVisibility(colId, false)}
+                    onShow={(colId) => engine.setColumnVisibility(colId, true)}
+                    onAddColumn={onAddColumnClick}
                 />
             </div>
 

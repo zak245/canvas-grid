@@ -28,7 +28,7 @@ export class CanvasRenderer {
         const allRows = engine.model.getAllRows();
         const visibleRange = engine.viewport.calculateVisibleRange(
             allRows,
-            engine.model.getColumns()
+            engine.model.getVisibleColumns()
         );
 
         const { visibleRows, visibleColumns, rowStartIndex, colStartIndex } = visibleRange;

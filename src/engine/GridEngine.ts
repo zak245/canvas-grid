@@ -528,6 +528,93 @@ export class GridEngine {
     }
 
     /**
+     * Set column visibility
+     */
+    setColumnVisibility(columnId: string, visible: boolean) {
+        const columns = this.model.getColumns();
+        const colIndex = columns.findIndex(c => c.id === columnId);
+        if (colIndex === -1) return;
+
+        columns[colIndex].visible = visible;
+        this.model.setColumns([...columns]); // Trigger update
+        
+        this.notifyDataChange(); // Notify React to update headers
+        this.render(); // Re-render canvas
+    }
+
+    /**
+     * Resize a column
+     */
+    async resizeColumn(columnId: string, width: number): Promise<void> {
+        // Validation
+        if (width < 50) width = 50; // Min width
+        if (width > 2000) width = 2000; // Max width
+
+        // Update model
+        const columns = this.model.getColumns();
+        const colIndex = columns.findIndex(c => c.id === columnId);
+        if (colIndex === -1) return;
+
+        // Create a new column object to trigger updates if we used immutable patterns
+        // But here we mutate the object for performance, then notify
+        columns[colIndex].width = width;
+        
+        // Notify UI (headers need to move)
+        this.model.setColumns([...columns]);
+        
+        // Trigger render to update grid lines
+        this.render();
+    }
+
+    /**
+     * Auto-resize column to fit content
+     */
+    async autoResizeColumn(columnId: string): Promise<void> {
+        const columns = this.model.getColumns();
+        const colIndex = columns.findIndex(c => c.id === columnId);
+        if (colIndex === -1) return;
+
+        const column = columns[colIndex];
+        const rows = this.model.getAllRows();
+        
+        // 1. Measure Header
+        // Approximation: 8px per char + padding (roughly)
+        // Better: Use canvas context to measure if available, or a hidden span
+        // For now, a heuristic is fast and usually sufficient for 90% cases
+        let maxWidth = (column.title.length * 8) + 24; // +24 for sort icon/menu/padding
+
+        // 2. Measure Content (Sample first 1000 rows for speed)
+        const sampleLimit = 1000;
+        const rowsToScan = rows.slice(0, sampleLimit);
+
+        // We need a context to measure text properly
+        const ctx = this.canvas?.getContext('2d');
+        if (ctx) {
+            ctx.font = `${this.theme.fontSize}px ${this.theme.fontFamily}`;
+            
+            // Measure Header
+            const headerWidth = ctx.measureText(column.title).width + 40; // +40 padding
+            maxWidth = Math.max(maxWidth, headerWidth);
+
+            // Measure Cells
+            for (const row of rowsToScan) {
+                const cell = row.cells.get(columnId);
+                if (cell?.value) {
+                    const text = cell.displayValue || String(cell.value);
+                    const width = ctx.measureText(text).width + 16; // +16 padding
+                    if (width > maxWidth) maxWidth = width;
+                }
+            }
+        }
+
+        // Cap max width
+        maxWidth = Math.min(maxWidth, 600);
+
+        // Apply
+        this.resizeColumn(columnId, maxWidth);
+    }
+
+    /**
      * Add a column
      */
     async addColumn(column: GridColumn): Promise<GridColumn> {

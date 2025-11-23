@@ -65,7 +65,6 @@ export const ColumnMenu: React.FC<ColumnMenuProps> = ({
                 icon={<EyeOff size={14} />} 
                 label="Hide Column" 
                 onClick={() => onAction('hide', columnId)}
-                disabled // Future
             />
             <MenuItem 
                 icon={<Pin size={14} />} 
