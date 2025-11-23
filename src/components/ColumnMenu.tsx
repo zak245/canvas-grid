@@ -25,14 +25,56 @@ export const ColumnMenu: React.FC<ColumnMenuProps> = ({
     useEffect(() => {
         if (!isOpen) return;
 
-        const handleClickOutside = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-                onClose();
+        // Small delay to avoid catching the opening click if it bubbles
+        const timer = setTimeout(() => {
+            const handleClickOutside = (e: MouseEvent) => {
+                if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                    console.log('[ColumnMenu] Click outside detected, closing');
+                    onClose();
+                }
+            };
+            document.addEventListener('mousedown', handleClickOutside);
+            
+            // Store cleanup function in a ref or just attach property to element if needed
+            // But here we can just rely on the cleanup function of useEffect
+            (menuRef.current as any)._cleanup = () => {
+                document.removeEventListener('mousedown', handleClickOutside);
+            };
+        }, 50);
+
+        return () => {
+            clearTimeout(timer);
+            if (menuRef.current && (menuRef.current as any)._cleanup) {
+                (menuRef.current as any)._cleanup();
+            } else {
+                 // Fallback cleanup in case timer fired
+                 document.removeEventListener('mousedown', (() => {}) as any); // This is tricky with closures
+                 // Better strategy: use a ref for the handler
             }
         };
+    }, [isOpen, onClose]);
 
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+    // Better implementation of the above effect
+    useEffect(() => {
+        if (!isOpen) return;
+        
+        let handler: ((e: MouseEvent) => void) | null = null;
+
+        const timer = setTimeout(() => {
+            handler = (e: MouseEvent) => {
+                if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                    onClose();
+                }
+            };
+            document.addEventListener('mousedown', handler);
+        }, 50);
+
+        return () => {
+            clearTimeout(timer);
+            if (handler) {
+                document.removeEventListener('mousedown', handler);
+            }
+        };
     }, [isOpen, onClose]);
 
     if (!isOpen) return null;

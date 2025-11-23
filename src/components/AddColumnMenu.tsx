@@ -1,32 +1,31 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, Plus, Eye, Type, ArrowLeft, Check } from 'lucide-react'; // Added icons
+import { Search, Plus, ArrowLeft, Check } from 'lucide-react';
 import { GridColumn } from '../types/grid';
 
 interface AddColumnMenuProps {
     isOpen: boolean;
     x: number;
     y: number;
-    hiddenColumns: GridColumn[];
+    allColumns: GridColumn[];
     onClose: () => void;
-    onShowColumn: (columnId: string) => void;
-    onCreateNew: (column: GridColumn) => void; // Updated signature
+    onToggleVisibility: (columnId: string, visible: boolean) => void;
+    onCreateNew: (column: GridColumn) => void;
 }
 
 export const AddColumnMenu: React.FC<AddColumnMenuProps> = ({
     isOpen,
     x,
     y,
-    hiddenColumns,
+    allColumns,
     onClose,
-    onShowColumn,
+    onToggleVisibility,
     onCreateNew
 }) => {
     const menuRef = useRef<HTMLDivElement>(null);
     const [search, setSearch] = useState('');
     const [view, setView] = useState<'list' | 'create'>('list');
     
-    // Creation state
     const [newColTitle, setNewColTitle] = useState('');
     const [newColType, setNewColType] = useState<GridColumn['type']>('text');
 
@@ -37,19 +36,29 @@ export const AddColumnMenu: React.FC<AddColumnMenuProps> = ({
             setNewColTitle('');
             return;
         }
-        const handleClickOutside = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-                onClose();
+
+        let handler: ((e: MouseEvent) => void) | null = null;
+
+        const timer = setTimeout(() => {
+            handler = (e: MouseEvent) => {
+                if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                    onClose();
+                }
+            };
+            document.addEventListener('mousedown', handler);
+        }, 50);
+
+        return () => {
+            clearTimeout(timer);
+            if (handler) {
+                document.removeEventListener('mousedown', handler);
             }
         };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isOpen, onClose]);
 
-    // Reset creation form when entering create view
     useEffect(() => {
         if (view === 'create') {
-            setNewColTitle(search); // Pre-fill with search query
+            setNewColTitle(search);
         }
     }, [view]);
 
@@ -70,7 +79,7 @@ export const AddColumnMenu: React.FC<AddColumnMenuProps> = ({
         onClose();
     };
 
-    const filteredColumns = hiddenColumns.filter(col => 
+    const filteredColumns = allColumns.filter(col => 
         col.title.toLowerCase().includes(search.toLowerCase())
     );
 
@@ -99,18 +108,28 @@ export const AddColumnMenu: React.FC<AddColumnMenuProps> = ({
                     <div className="max-h-64 overflow-y-auto py-1">
                         {filteredColumns.length > 0 ? (
                             <>
-                                <div className="px-3 py-1 text-xs font-semibold text-gray-500">
-                                    Hidden Columns
+                                <div className="px-3 py-1 text-xs font-semibold text-gray-500 flex justify-between items-center">
+                                    <span>Manage Columns</span>
+                                    <span className="text-[10px] font-normal bg-gray-100 px-1.5 rounded">{filteredColumns.length}</span>
                                 </div>
                                 {filteredColumns.map((col) => (
                                     <button
                                         key={col.id}
-                                        onClick={() => { onShowColumn(col.id); onClose(); }}
-                                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-left hover:bg-gray-50 transition-colors"
+                                        onClick={() => onToggleVisibility(col.id, !col.visible)}
+                                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-left hover:bg-gray-50 transition-colors group"
                                     >
-                                        <Eye size={14} className="text-gray-400" />
-                                        <span className="flex-1 truncate">{col.title}</span>
-                                        <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded capitalize">
+                                        <div className={`
+                                            w-4 h-4 flex items-center justify-center rounded transition-colors
+                                            ${col.visible ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-400 group-hover:bg-gray-300'}
+                                        `}>
+                                            {col.visible && <Check size={10} strokeWidth={4} />}
+                                        </div>
+                                        
+                                        <span className={`flex-1 truncate ${!col.visible ? 'text-gray-400' : 'text-gray-700'}`}>
+                                            {col.title}
+                                        </span>
+                                        
+                                        <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded capitalize opacity-0 group-hover:opacity-100 transition-opacity">
                                             {col.type}
                                         </span>
                                     </button>
@@ -119,7 +138,7 @@ export const AddColumnMenu: React.FC<AddColumnMenuProps> = ({
                             </>
                         ) : search && (
                             <div className="px-4 py-2 text-sm text-gray-500 text-center italic">
-                                No hidden columns match "{search}"
+                                No columns match "{search}"
                             </div>
                         )}
 
@@ -188,4 +207,3 @@ export const AddColumnMenu: React.FC<AddColumnMenuProps> = ({
         document.body
     );
 };
-

@@ -81,14 +81,23 @@ export interface SelectionRange {
 }
 
 export interface GridTheme {
-    headerHeight: number;
+    // Dimensions
     rowHeight: number;
+    headerHeight: number;
     rowHeaderWidth: number;
-    borderColor: string;
-    gridLineColor: string;
+
+    // Colors
+    backgroundColor?: string;
     headerBackgroundColor: string;
+    headerColor?: string; // New
+    gridLineColor: string;
+    borderColor: string;
+    
+    // Selection
     selectionColor: string;
     selectionBorderColor: string;
+
+    // Font
     fontFamily: string;
     fontSize: number;
     headerFontFamily: string;

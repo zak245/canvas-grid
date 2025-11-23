@@ -211,6 +211,23 @@ export class GridModel {
         this.columns = this.columns.filter(c => c.id !== columnId);
         // Note: Adapter should handle removing cells
     }
+
+    /**
+     * Move a column from one index to another
+     */
+    moveColumn(fromIndex: number, toIndex: number): void {
+        if (fromIndex < 0 || fromIndex >= this.columns.length ||
+            toIndex < 0 || toIndex >= this.columns.length ||
+            fromIndex === toIndex) {
+            return;
+        }
+
+        const column = this.columns[fromIndex];
+        // Remove from old index
+        this.columns.splice(fromIndex, 1);
+        // Insert at new index
+        this.columns.splice(toIndex, 0, column);
+    }
     
     // ===== NEW: SORT STATE =====
     

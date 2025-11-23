@@ -20,6 +20,7 @@ export class InputController {
         canvas.addEventListener('mousedown', this.mouseHandler.handleMouseDown);
         canvas.addEventListener('mousemove', this.mouseHandler.handleMouseMove);
         canvas.addEventListener('mouseup', this.mouseHandler.handleMouseUp);
+        canvas.addEventListener('dblclick', this.mouseHandler.handleDoubleClick); // Added
 
         // Keyboard events (Canvas focus)
         canvas.addEventListener('keydown', this.keyboardHandler.handleKeyDown);
@@ -39,6 +40,7 @@ export class InputController {
         canvas.removeEventListener('mousedown', this.mouseHandler.handleMouseDown);
         canvas.removeEventListener('mousemove', this.mouseHandler.handleMouseMove);
         canvas.removeEventListener('mouseup', this.mouseHandler.handleMouseUp);
+        canvas.removeEventListener('dblclick', this.mouseHandler.handleDoubleClick); // Added
         canvas.removeEventListener('keydown', this.keyboardHandler.handleKeyDown);
 
         document.removeEventListener('copy', this.handleCopy);

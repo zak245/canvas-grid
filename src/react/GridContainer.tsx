@@ -1,39 +1,43 @@
 import React, { useEffect, useState } from 'react';
+import { useStore } from 'zustand';
 import { useGridEngine } from './useGridEngine';
 import type { GridColumn, GridRow } from '../types/grid';
 import type { GridConfig } from '../config/GridConfig';
 import type { ColumnSort } from '../types/platform';
-import { ColumnHeaders } from '../components/ColumnHeaders';
 import { RowHeaders } from '../components/RowHeaders';
+import { ColumnMenu } from '../components/ColumnMenu';
+import { AddColumnMenu } from '../components/AddColumnMenu';
 
 interface GridContainerProps {
     columns?: GridColumn[];
     rows?: GridRow[];
     onColumnsUpdate?: (columns: GridColumn[]) => void;
-    config?: Partial<GridConfig>;  // NEW: Optional config
-    onAddColumnClick?: (column?: GridColumn) => void; // Updated to allow passing new column directly
+    config?: Partial<GridConfig>;
+    onAddColumnClick?: (column?: GridColumn) => void;
 }
 
 export const GridContainer: React.FC<GridContainerProps> = ({
     columns = [],
     rows = [],
     onColumnsUpdate,
-    config,  // NEW
+    config,
     onAddColumnClick
 }) => {
-    const { canvasRef, engine } = useGridEngine(config);  // NEW: Pass config
+    const { canvasRef, engine } = useGridEngine(config);
     const [scrollState, setScrollState] = useState({ scrollLeft: 0, scrollTop: 0 });
     const [visibleRowIndices, setVisibleRowIndices] = useState<number[]>([]);
     
-    // Get columns/rows from engine.model when using config, otherwise from props
-    // Use getVisibleColumns() to respect hidden state
+    // Subscribe to store for UI state (Single Source of Truth)
+    const activeHeaderMenu = useStore(engine.store, (state) => state.activeHeaderMenu);
+    const activeAddColumnMenu = useStore(engine.store, (state) => state.activeAddColumnMenu);
+    
     const effectiveColumns = config ? engine.model.getVisibleColumns() : columns;
-    const allColumns = config ? engine.model.getColumns() : columns; // Pass all columns for hidden list
+    const allColumns = config ? engine.model.getColumns() : columns;
     const effectiveRows = config ? engine.model.getAllRows() : rows;
-    const [dataVersion, setDataVersion] = useState(0); // Force re-render on data change
-    const [sortState, setSortState] = useState<ColumnSort[]>([]); // Local state for sort UI
+    const [dataVersion, setDataVersion] = useState(0);
+    const [sortState, setSortState] = useState<ColumnSort[]>([]);
 
-    // Subscribe to data changes when using config
+    // Subscribe to data/sort changes
     useEffect(() => {
         if (!config) return;
 
@@ -51,29 +55,21 @@ export const GridContainer: React.FC<GridContainerProps> = ({
         };
     }, [engine, config]);
 
-    // Sync props to engine (only if not using config mode)
+    // Sync props to engine (legacy mode)
     useEffect(() => {
-        // Skip if engine is using config (adapter handles data loading)
         if (config) return;
-        
-        // Legacy mode: manually sync columns/rows
         if (columns.length > 0) {
             engine.model.setColumns(columns);
-
-            // Trigger AI streaming for AI columns
-            const aiColumns = columns.filter(col => col.type === 'ai');
+             const aiColumns = columns.filter(col => col.type === 'ai');
             if (aiColumns.length > 0 && engine.aiStreamer) {
-                // Stream all visible rows for AI columns
                 const allRows = engine.model.getAllRows();
                 aiColumns.forEach(aiCol => {
                     allRows.forEach((row, rowIndex) => {
                         if (aiCol.aiConfig?.prompt) {
-                            // Get context from row for prompt
                             const context = Array.from(row.cells.values())
                                 .map(cell => cell.value)
                                 .filter(Boolean)
                                 .join(' ');
-
                             const fullPrompt = `${aiCol.aiConfig.prompt}. Context: ${context}`;
                             if (engine.aiStreamer) {
                                 engine.aiStreamer.streamCell(rowIndex, aiCol.id, fullPrompt);
@@ -83,12 +79,10 @@ export const GridContainer: React.FC<GridContainerProps> = ({
                 });
             }
         }
-        if (rows.length > 0) {
-            engine.model.setRows(rows);
-        }
+        if (rows.length > 0) engine.model.setRows(rows);
     }, [engine, columns, rows, config]);
 
-    // Subscribe to viewport changes for header sync
+    // Viewport sync
     useEffect(() => {
         const interval = setInterval(() => {
             const viewportState = engine.viewport.getState();
@@ -97,85 +91,72 @@ export const GridContainer: React.FC<GridContainerProps> = ({
                 scrollTop: viewportState.scrollTop
             });
 
-            // Calculate visible row indices
             const visibleRange = engine.viewport.calculateVisibleRange(
                 engine.model.getAllRows(),
-                engine.model.getColumns()
+                engine.model.getVisibleColumns()
             );
             const indices = Array.from(
                 { length: visibleRange.rowEndIndex - visibleRange.rowStartIndex + 1 },
                 (_, i) => visibleRange.rowStartIndex + i
             );
             setVisibleRowIndices(indices);
-        }, 16); // ~60fps
-
+        }, 16);
         return () => clearInterval(interval);
-    }, [engine, dataVersion]); // Add dataVersion dep
+    }, [engine, dataVersion]);
 
-    // Handle wheel events for scrolling
+    // Scroll handler
     useEffect(() => {
         const handleWheel = (e: WheelEvent) => {
             e.preventDefault();
 
-            const { scrollTop, scrollLeft } = engine.viewport.getState();
-            const deltaX = e.deltaX;
-            const deltaY = e.deltaY;
+            // Freeze scroll if menu is open
+            if (activeHeaderMenu || activeAddColumnMenu) {
+                return;
+            }
 
-            // Calculate total grid dimensions
-            // Add 50px buffer for the "Add Column" ghost header
+            const { scrollTop, scrollLeft } = engine.viewport.getState();
             const totalWidth = effectiveColumns.reduce((sum, col) => sum + col.width, 0) + 50;
             const totalHeight = effectiveRows.length * engine.theme.rowHeight;
             const viewportState = engine.viewport.getState();
-
-            // Clamp scroll values
-            const newScrollLeft = Math.max(0, Math.min(totalWidth - viewportState.width + engine.theme.rowHeaderWidth, scrollLeft + deltaX));
-            const newScrollTop = Math.max(0, Math.min(totalHeight - viewportState.height + engine.theme.headerHeight, scrollTop + deltaY));
-
+            const newScrollLeft = Math.max(0, Math.min(totalWidth - viewportState.width + engine.theme.rowHeaderWidth, scrollLeft + e.deltaX));
+            const newScrollTop = Math.max(0, Math.min(totalHeight - viewportState.height + engine.theme.headerHeight, scrollTop + e.deltaY));
             engine.scroll(newScrollTop, newScrollLeft);
         };
-
         const canvas = canvasRef.current;
-        if (canvas) {
-            canvas.addEventListener('wheel', handleWheel, { passive: false });
-        }
+        if (canvas) canvas.addEventListener('wheel', handleWheel, { passive: false });
+        return () => canvas?.removeEventListener('wheel', handleWheel);
+    }, [engine, canvasRef, effectiveColumns, effectiveRows, activeHeaderMenu, activeAddColumnMenu]); // Added dependencies
 
-        return () => {
-            if (canvas) {
-                canvas.removeEventListener('wheel', handleWheel);
-            }
-        };
-    }, [engine, canvasRef, effectiveColumns, effectiveRows]);
+    // Menu Handlers
+    const handleMenuAction = (action: string, columnId: string) => {
+        if (action === 'sortAsc') engine.sort(columnId, 'asc');
+        if (action === 'sortDesc') engine.sort(columnId, 'desc');
+        if (action === 'hide') engine.setColumnVisibility(columnId, false);
+        // Close via store
+        engine.store.setState({ activeHeaderMenu: null });
+    };
+
+    const handleCloseMenu = () => {
+        engine.store.setState({ activeHeaderMenu: null });
+    };
+
+    const handleCloseAddMenu = () => {
+         engine.store.setState({ activeAddColumnMenu: null });
+    };
+
+    const handleCreateColumn = (column: GridColumn) => {
+        engine.addColumn(column);
+    };
 
     return (
         <div className="w-full h-full relative overflow-hidden bg-white">
             {/* Top-left corner */}
             <div
                 className="absolute top-0 left-0 bg-gray-50 border-r border-b border-gray-200 z-20"
-                style={{
-                    width: `${engine.theme.rowHeaderWidth}px`,
-                    height: `${engine.theme.headerHeight}px`
-                }}
+                style={{ width: `${engine.theme.rowHeaderWidth}px`, height: `${engine.theme.headerHeight}px` }}
             />
 
-            {/* Column Headers */}
-            <div className="absolute top-0 left-0 right-0 z-10">
-                <ColumnHeaders
-                    columns={effectiveColumns}
-                    allColumns={allColumns}
-                    scrollLeft={scrollState.scrollLeft}
-                    rowHeaderWidth={engine.theme.rowHeaderWidth}
-                    sortState={sortState}
-                    onSort={(colId, direction) => engine.sort(colId, direction)}
-                    onSelectColumn={(colId, multi, range) => engine.selectColumn(colId, multi, range)}
-                    onResize={(colId, width) => engine.resizeColumn(colId, width)}
-                    onAutoResize={(colId) => engine.autoResizeColumn(colId)}
-                    onHide={(colId) => engine.setColumnVisibility(colId, false)}
-                    onShow={(colId) => engine.setColumnVisibility(colId, true)}
-                    onAddColumn={onAddColumnClick}
-                />
-            </div>
-
-            {/* Row Headers */}
+            {/* Row Headers - STILL REACT FOR NOW, BUT CLEANER */}
             <div className="absolute top-0 left-0 bottom-0 z-10">
                 <RowHeaders
                     visibleRowIndices={visibleRowIndices}
@@ -187,10 +168,31 @@ export const GridContainer: React.FC<GridContainerProps> = ({
             </div>
 
             {/* Canvas Grid */}
-            <canvas
-                ref={canvasRef}
-                className="block touch-none"
-            />
+            <canvas ref={canvasRef} className="block touch-none" />
+
+            {/* Portals for Menus (Driven by Store) */}
+            {activeHeaderMenu && (
+                <ColumnMenu
+                    isOpen={true}
+                    x={activeHeaderMenu.x}
+                    y={activeHeaderMenu.y}
+                    columnId={activeHeaderMenu.colId}
+                    onClose={handleCloseMenu}
+                    onAction={handleMenuAction}
+                />
+            )}
+
+            {activeAddColumnMenu && (
+                <AddColumnMenu
+                    isOpen={true}
+                    x={activeAddColumnMenu.x}
+                    y={activeAddColumnMenu.y}
+                    allColumns={allColumns}
+                    onClose={handleCloseAddMenu}
+                    onToggleVisibility={(id, visible) => engine.setColumnVisibility(id, visible)}
+                    onCreateNew={handleCreateColumn}
+                />
+            )}
         </div>
     );
 };

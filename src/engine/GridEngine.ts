@@ -18,14 +18,23 @@ export interface GridEngineState {
     fillRange: GridSelection | null;
     hoverPosition: { x: number; y: number } | null;  // For tooltips
     editingCell: { col: number; row: number } | null;
+    // NEW: Reorder State
+    reorderState: {
+        colIndex: number; // Index in visibleColumns
+        dragX: number;    // Visual X position relative to canvas
+        targetIndex: number; // Where it would drop
+    } | null;
+    // NEW: Overlay State (Single Source of Truth)
+    activeHeaderMenu: { colId: string, x: number, y: number } | null;
+    activeAddColumnMenu: { x: number, y: number } | null;
 }
 
 export class GridEngine {
     // Core components
-    public model: GridModel;
-    public viewport: Viewport;
-    public store: StoreApi<GridEngineState>;
-    public theme: GridTheme;
+    public model!: GridModel;
+    public viewport!: Viewport;
+    public store!: StoreApi<GridEngineState>;
+    public theme!: GridTheme;
 
     // Platform components (NEW)
     private config: GridConfig | null = null;
@@ -96,6 +105,9 @@ export class GridEngine {
             fillRange: null,
             hoverPosition: null,
             editingCell: null,
+            reorderState: null,
+            activeHeaderMenu: null,
+            activeAddColumnMenu: null,
         }));
 
         // Call initialization hook
@@ -122,6 +134,9 @@ export class GridEngine {
             fillRange: null,
             hoverPosition: null,
             editingCell: null,
+            reorderState: null,
+            activeHeaderMenu: null,
+            activeAddColumnMenu: null,
         }));
     }
 
@@ -186,6 +201,9 @@ export class GridEngine {
     private notifySortChange(sortState: ColumnSort[]) {
         this.sortChangeSubscribers.forEach(cb => cb(sortState));
     }
+
+    // REMOVED: Header Menu and Add Column subscriptions (Moved to Store)
+
 
     // Load initial data from adapter
     private async loadInitialData() {
@@ -285,10 +303,14 @@ export class GridEngine {
     // --- Actions ---
     resize(width: number, height: number) {
         this.viewport.updateState({ width, height });
+        // Auto-close menus on resize
+        this.store.setState({ activeHeaderMenu: null, activeAddColumnMenu: null });
     }
 
     scroll(scrollTop: number, scrollLeft: number) {
         this.viewport.updateState({ scrollTop, scrollLeft });
+        // Auto-close menus on scroll
+        this.store.setState({ activeHeaderMenu: null, activeAddColumnMenu: null });
     }
 
     // ===== NEW: PUBLIC API METHODS =====
@@ -538,6 +560,33 @@ export class GridEngine {
         columns[colIndex].visible = visible;
         this.model.setColumns([...columns]); // Trigger update
         
+        // Recalculate Ghost Menu Position if open
+        const { activeAddColumnMenu } = this.store.getState();
+        if (activeAddColumnMenu && this.canvas) {
+             const visibleCols = this.model.getVisibleColumns();
+             const totalWidth = visibleCols.reduce((sum, c) => sum + c.width, 0);
+             const { scrollLeft } = this.viewport.getState();
+             const { rowHeaderWidth } = this.theme;
+             
+             const rect = this.canvas.getBoundingClientRect();
+             
+             // Visual X on Canvas = rowHeaderWidth - scrollLeft + totalWidth
+             const ghostVisualX = rowHeaderWidth - scrollLeft + totalWidth;
+             const ghostScreenX = rect.left + ghostVisualX;
+             
+             // Align menu (same logic as MouseHandler)
+             const MENU_WIDTH = 300;
+             let menuX = ghostScreenX;
+             if (menuX + MENU_WIDTH > window.innerWidth) {
+                menuX = window.innerWidth - MENU_WIDTH - 10;
+             }
+             
+             // Keep Y same
+             this.store.setState({
+                 activeAddColumnMenu: { x: menuX, y: activeAddColumnMenu.y }
+             });
+        }
+        
         this.notifyDataChange(); // Notify React to update headers
         this.render(); // Re-render canvas
     }
@@ -778,6 +827,32 @@ export class GridEngine {
                 }
             });
         }
+    }
+
+    // NEW: Move Column (Reordering)
+    moveColumn(fromVisibleIndex: number, toVisibleIndex: number): void {
+        const visibleCols = this.model.getVisibleColumns();
+        if (fromVisibleIndex < 0 || fromVisibleIndex >= visibleCols.length ||
+            toVisibleIndex < 0 || toVisibleIndex >= visibleCols.length ||
+            fromVisibleIndex === toVisibleIndex) {
+            return;
+        }
+
+        const fromId = visibleCols[fromVisibleIndex].id;
+        const toId = visibleCols[toVisibleIndex].id;
+
+        const allCols = this.model.getColumns();
+        const fromRealIndex = allCols.findIndex(c => c.id === fromId);
+        const toRealIndex = allCols.findIndex(c => c.id === toId);
+
+        if (fromRealIndex === -1 || toRealIndex === -1) return;
+
+        // Update model
+        this.model.moveColumn(fromRealIndex, toRealIndex);
+
+        // Notify
+        this.notifyDataChange();
+        this.render();
     }
 
     /**

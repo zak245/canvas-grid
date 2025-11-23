@@ -5,13 +5,35 @@ export class MouseHandler {
     private isDragging = false;
     private dragStart: CellPosition | null = null;
 
+    // Header Interaction State
+    private isResizing = false;
+    private resizingColIndex: number = -1;
+    private resizingStartWidth: number = 0;
+    private resizingStartX: number = 0;
+
+    // Reorder State
+    private isReordering = false;
+    private reorderCandidate: { colIndex: number, startX: number } | null = null;
+
     constructor(private engine: GridEngine) { }
 
     handleMouseDown = (e: MouseEvent) => {
         const { theme } = this.engine;
         const { scrollTop, scrollLeft } = this.engine.viewport.getState();
         
-        // Check for "Add Row" button click
+        // 1. Check for Header Interaction
+        if (e.offsetY < theme.headerHeight) {
+            this.handleHeaderMouseDown(e);
+            return;
+        }
+
+        // Close menus on any grid body interaction
+        const { activeHeaderMenu, activeAddColumnMenu } = this.engine.store.getState();
+        if (activeHeaderMenu || activeAddColumnMenu) {
+            this.engine.store.setState({ activeHeaderMenu: null, activeAddColumnMenu: null });
+        }
+
+        // 2. Check for "Add Row" button click
         // Convert to grid coordinates
         const gridY = (e.offsetY - theme.headerHeight) + scrollTop;
         const totalRows = this.engine.model.getRowCount();
@@ -28,13 +50,13 @@ export class MouseHandler {
 
         const { selection } = this.engine.store.getState();
 
-        // Check if clicking on fill handle
+        // 3. Check if clicking on fill handle
         if (selection && this.isClickOnFillHandle(e.offsetX, e.offsetY, selection)) {
             this.startFillDrag(selection);
             return;
         }
 
-        // Start cell selection
+        // 4. Start cell selection
         this.isDragging = true;
         this.dragStart = cell;
 
@@ -74,21 +96,71 @@ export class MouseHandler {
     };
 
     handleMouseMove = (e: MouseEvent) => {
+        const { theme } = this.engine;
         const { isFilling, selection } = this.engine.store.getState();
+        const canvas = e.target as HTMLCanvasElement;
 
         // Update hover position for tooltips
         this.engine.store.setState({
             hoverPosition: { x: e.offsetX, y: e.offsetY }
         });
 
-        // Update cursor style if hovering over fill handle
-        const canvas = e.target as HTMLCanvasElement;
-        if (selection && this.isClickOnFillHandle(e.offsetX, e.offsetY, selection)) {
+        // 1. Handle Column Resizing
+        if (this.isResizing) {
+            const deltaX = e.clientX - this.resizingStartX;
+            const newWidth = Math.max(50, this.resizingStartWidth + deltaX);
+            const column = this.engine.model.getVisibleColumns()[this.resizingColIndex];
+            if (column) {
+                this.engine.resizeColumn(column.id, newWidth);
+            }
+            canvas.style.cursor = 'col-resize';
+            return;
+        }
+
+        // 2. Handle Reordering
+        if (this.reorderCandidate && !this.isReordering) {
+            // Check threshold to start drag
+            if (Math.abs(e.clientX - this.reorderCandidate.startX) > 5) {
+                this.isReordering = true;
+                canvas.style.cursor = 'grabbing';
+            }
+        }
+
+        if (this.isReordering && this.reorderCandidate) {
+            this.updateReorderState(e.clientX);
+            canvas.style.cursor = 'grabbing';
+            return;
+        }
+
+        // 3. Handle Cursor Styling
+        if (e.offsetY < theme.headerHeight) {
+            // Header Hover Logic
+            const { colIndex, onEdge } = this.getHeaderAt(e.offsetX);
+            
+            if (onEdge) {
+                canvas.style.cursor = 'col-resize';
+            } else if (colIndex >= 0) {
+                canvas.style.cursor = 'default'; 
+            } else {
+                // Check Ghost Column
+                const visibleCols = this.engine.model.getVisibleColumns();
+                const totalWidth = visibleCols.reduce((sum, c) => sum + c.width, 0);
+                const { scrollLeft } = this.engine.viewport.getState();
+                const x = e.offsetX + scrollLeft - theme.rowHeaderWidth;
+                
+                if (x >= totalWidth && x < totalWidth + 50) {
+                    canvas.style.cursor = 'pointer'; // Ghost column
+                } else {
+                    canvas.style.cursor = 'default';
+                }
+            }
+        } else if (selection && this.isClickOnFillHandle(e.offsetX, e.offsetY, selection)) {
             canvas.style.cursor = 'crosshair';
         } else if (!isFilling) {
             canvas.style.cursor = 'default';
         }
 
+        // 4. Handle Cell Drag Operations
         if (isFilling && selection) {
             this.updateFillRange(e.offsetX, e.offsetY, selection);
         } else if (this.isDragging && this.dragStart) {
@@ -96,28 +168,266 @@ export class MouseHandler {
         }
     };
 
-    handleMouseUp = () => {
+    handleMouseUp = (e: MouseEvent) => {
         const { isFilling, selection, fillRange } = this.engine.store.getState();
+
+        // Handle Reorder Drop
+        if (this.isReordering && this.reorderCandidate) {
+            const targetIndex = this.calculateReorderTarget(e.clientX);
+            // Move column if index changed
+            if (targetIndex !== this.reorderCandidate.colIndex) {
+                this.engine.moveColumn(this.reorderCandidate.colIndex, targetIndex);
+            }
+            
+            // Reset
+            this.isReordering = false;
+            this.reorderCandidate = null;
+            this.engine.store.setState({ reorderState: null });
+            // Force render to clear visuals
+            // this.engine.render(); // moveColumn calls render
+            return;
+        }
+
+        // Handle Click Selection (if not reordered)
+        if (this.reorderCandidate) {
+            const column = this.engine.model.getVisibleColumns()[this.reorderCandidate.colIndex];
+            if (column) {
+                 this.engine.selectColumn(column.id, e.metaKey || e.ctrlKey, e.shiftKey);
+            }
+            this.reorderCandidate = null;
+        }
 
         if (isFilling) {
             this.completeFill(selection, fillRange);
         }
 
+        // Stop all drag operations
         this.isDragging = false;
         this.dragStart = null;
+        this.isResizing = false;
+        this.resizingColIndex = -1;
     };
 
+    handleDoubleClick = (e: MouseEvent) => {
+        const { theme } = this.engine;
+        
+        // Header Double Click -> Auto Resize
+        if (e.offsetY < theme.headerHeight) {
+            const { colIndex, onEdge } = this.getHeaderAt(e.offsetX);
+            if (onEdge && colIndex >= 0) {
+                const column = this.engine.model.getVisibleColumns()[colIndex];
+                if (column) {
+                    this.engine.autoResizeColumn(column.id);
+                }
+            }
+        }
+    };
+
+    // --- Header Helpers ---
+
+    private handleHeaderMouseDown(e: MouseEvent) {
+        const { theme } = this.engine;
+        const { scrollLeft } = this.engine.viewport.getState();
+        const { colIndex, onEdge, xInCol } = this.getHeaderAt(e.offsetX);
+        const visibleCols = this.engine.model.getVisibleColumns();
+
+        // 1. Check Ghost Column Click
+        const totalWidth = visibleCols.reduce((sum, c) => sum + c.width, 0);
+        const x = e.offsetX + scrollLeft - theme.rowHeaderWidth;
+        
+        console.log('[MouseHandler] Header Click:', { x, totalWidth, colIndex, xInCol });
+
+        // Use a small tolerance for ghost column click
+        if (x >= totalWidth - 5 && x < totalWidth + 55) {
+            console.log('[MouseHandler] Ghost Column Click Detected');
+            e.preventDefault();
+            e.stopPropagation();
+
+            const currentAdd = this.engine.store.getState().activeAddColumnMenu;
+            if (currentAdd) {
+                 this.engine.store.setState({ activeAddColumnMenu: null });
+                 return;
+            }
+            
+            // Smart positioning logic (Anchor to Ghost Button)
+            const offsetInGhost = x - totalWidth;
+            const ghostStartX = e.clientX - offsetInGhost;
+            const rect = (e.target as HTMLElement).getBoundingClientRect();
+            
+            const MENU_WIDTH = 300;
+            let menuX = ghostStartX;
+            
+            if (menuX + MENU_WIDTH > window.innerWidth) {
+                menuX = window.innerWidth - MENU_WIDTH - 10;
+            }
+            
+            const menuY = rect.top + theme.headerHeight;
+
+            this.engine.store.setState({
+                activeAddColumnMenu: { x: menuX, y: menuY },
+                activeHeaderMenu: null
+            });
+            return;
+        }
+
+        if (colIndex === -1) return;
+        const column = visibleCols[colIndex];
+
+        // 2. Start Resizing
+        if (onEdge) {
+            e.preventDefault();
+            e.stopPropagation();
+            // Close menus
+            this.engine.store.setState({ activeHeaderMenu: null, activeAddColumnMenu: null });
+
+            this.isResizing = true;
+            this.resizingColIndex = colIndex;
+            this.resizingStartWidth = column.width;
+            this.resizingStartX = e.clientX;
+            return;
+        }
+
+        // 3. Check Menu Click (Right side)
+        // Increased to 30px to match renderer icon space
+        if (xInCol > column.width - 30) {
+            console.log('[MouseHandler] Menu Click Detected');
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const currentMenu = this.engine.store.getState().activeHeaderMenu;
+            
+            // Toggle
+            if (currentMenu && currentMenu.colId === column.id) {
+                 this.engine.store.setState({ activeHeaderMenu: null });
+                 return;
+            }
+            
+            // Smart Positioning logic (Anchor to Column Header)
+            const rect = (e.target as HTMLElement).getBoundingClientRect();
+            const colStartX = e.clientX - xInCol;
+            const colEndX = colStartX + column.width;
+            
+            const MENU_WIDTH = 200;
+            let menuX = colEndX - MENU_WIDTH; // Align right always
+            
+            // Removed force-left-align for narrow columns to satisfy user request
+            // if (menuX < colStartX) menuX = colStartX; 
+            
+            if (menuX + MENU_WIDTH > window.innerWidth) menuX = window.innerWidth - MENU_WIDTH - 10;
+            
+            const menuY = rect.top + theme.headerHeight;
+
+            this.engine.store.setState({
+                activeHeaderMenu: { colId: column.id, x: menuX, y: menuY },
+                activeAddColumnMenu: null
+            });
+            return;
+        }
+
+        // 4. Prepare for Reorder or Select
+        // Close menus
+        this.engine.store.setState({ activeHeaderMenu: null, activeAddColumnMenu: null });
+
+        this.reorderCandidate = { 
+            colIndex, 
+            startX: e.clientX 
+        };
+    }
+
+    private updateReorderState(clientX: number) {
+        if (!this.reorderCandidate) return;
+
+        const { theme } = this.engine;
+        const { scrollLeft } = this.engine.viewport.getState();
+        
+        // Calculate current visual X relative to canvas
+        // The ghost should follow the mouse
+        // dragX is just the offset from start
+        const deltaX = clientX - this.reorderCandidate.startX;
+        
+        // Determine target index
+        const targetIndex = this.calculateReorderTarget(clientX);
+
+        this.engine.store.setState({
+            reorderState: {
+                colIndex: this.reorderCandidate.colIndex,
+                dragX: clientX, // We'll use absolute mouse X for drawing ghost
+                targetIndex
+            }
+        });
+        
+        // Force render loop to draw ghost
+        // The loop is running, but we need to make sure it picks up the state
+    }
+
+    private calculateReorderTarget(clientX: number): number {
+        const { theme } = this.engine;
+        const { scrollLeft } = this.engine.viewport.getState();
+        
+        // Adjust X to grid coordinates
+        const gridX = clientX - theme.rowHeaderWidth + scrollLeft;
+        
+        const columns = this.engine.model.getVisibleColumns();
+        let currentX = 0;
+        
+        for (let i = 0; i < columns.length; i++) {
+            const width = columns[i].width;
+            const midPoint = currentX + width / 2;
+            
+            if (gridX < midPoint) {
+                return i;
+            }
+            currentX += width;
+        }
+        
+        return columns.length;
+    }
+
+    private getHeaderAt(x: number): { colIndex: number; onEdge: boolean; xInCol: number } {
+        const { theme } = this.engine;
+        const { scrollLeft } = this.engine.viewport.getState();
+        
+        const gridX = x + scrollLeft - theme.rowHeaderWidth;
+        
+        if (gridX < 0) return { colIndex: -1, onEdge: false, xInCol: 0 };
+
+        let currentX = 0;
+        const columns = this.engine.model.getVisibleColumns();
+        const edgeThreshold = 5;
+
+        for (let i = 0; i < columns.length; i++) {
+            const width = columns[i].width;
+            if (gridX >= currentX && gridX < currentX + width) {
+                const xInCol = gridX - currentX;
+                
+                // Check Right Edge (standard resize handle)
+                if (Math.abs(xInCol - width) <= edgeThreshold) {
+                    return { colIndex: i, onEdge: true, xInCol };
+                }
+                
+                // Check Left Edge (resize handle for previous column)
+                if (xInCol <= edgeThreshold && i > 0) {
+                    // Return previous column as the target for resizing
+                    return { colIndex: i - 1, onEdge: true, xInCol };
+                }
+
+                return { colIndex: i, onEdge: false, xInCol };
+            }
+            currentX += width;
+        }
+
+        return { colIndex: -1, onEdge: false, xInCol: 0 };
+    }
+
+    // --- Existing Helpers ---
     private getCellAt(x: number, y: number): CellPosition | null {
         const { scrollTop, scrollLeft } = this.engine.viewport.getState();
         const { theme } = this.engine;
 
-        // Adjust for React headers
         const adjustedX = x - theme.rowHeaderWidth;
         const adjustedY = y - theme.headerHeight;
 
-        if (adjustedX < 0 || adjustedY < 0) {
-            return null;
-        }
+        if (adjustedX < 0 || adjustedY < 0) return null;
 
         const gridX = adjustedX + scrollLeft;
         const gridY = adjustedY + scrollTop;
@@ -126,7 +436,7 @@ export class MouseHandler {
 
         let currentX = 0;
         let colIndex = -1;
-        const columns = this.engine.model.getColumns();
+        const columns = this.engine.model.getVisibleColumns();
 
         for (let i = 0; i < columns.length; i++) {
             const width = columns[i].width;
@@ -137,8 +447,14 @@ export class MouseHandler {
             currentX += width;
         }
 
-        if (rowIndex >= 0 && colIndex >= 0 && rowIndex < this.engine.model.getRowCount()) {
-            return { col: colIndex, row: rowIndex };
+        if (colIndex >= 0) {
+             const visibleCol = columns[colIndex];
+             const fullList = this.engine.model.getColumns();
+             const trueIndex = fullList.findIndex(c => c.id === visibleCol.id);
+             
+             if (rowIndex >= 0 && trueIndex >= 0 && rowIndex < this.engine.model.getRowCount()) {
+                return { col: trueIndex, row: rowIndex };
+             }
         }
         return null;
     }
@@ -151,33 +467,30 @@ export class MouseHandler {
         const { scrollTop, scrollLeft } = this.engine.viewport.getState();
         const handleSize = 6;
 
-        // Convert mouse coordinates to grid coordinates
-        // Mouse x,y are in canvas space (includes headers but not scroll)
-        // We need to convert to grid space (no headers, includes scroll)
         const gridX = (x - theme.rowHeaderWidth) + scrollLeft;
         const gridY = (y - theme.headerHeight) + scrollTop;
 
-        // EXACTLY match CanvasRenderer.ts lines 78-106
-        // Calculate range bounds in grid coordinates
         let startX = 0;
         let startY = lastRange.start.row * theme.rowHeight;
         let width = 0;
         let height = (lastRange.end.row - lastRange.start.row + 1) * theme.rowHeight;
 
-        const cols = this.engine.model.getColumns();
-        for (let i = 0; i < cols.length; i++) {
-            if (i < lastRange.start.col) {
-                startX += cols[i].width;
-            } else if (i <= lastRange.end.col) {
-                width += cols[i].width;
-            }
+        const cols = this.engine.model.getVisibleColumns();
+        const allCols = this.engine.model.getColumns();
+
+        startX = 0;
+        width = 0;
+        for (const col of cols) {
+             const trueIndex = allCols.findIndex(c => c.id === col.id);
+             if (trueIndex < lastRange.start.col) {
+                 startX += col.width;
+             } else if (trueIndex <= lastRange.end.col) {
+                 width += col.width;
+             }
         }
 
-        // Handle position in grid coordinates
         const handleX = startX + width - handleSize / 2;
         const handleY = startY + height - handleSize / 2;
-
-        // Compare grid coordinates with grid handle position
         const tolerance = 3;
 
         return (
@@ -189,10 +502,7 @@ export class MouseHandler {
     }
 
     private startFillDrag(selection: any) {
-        this.engine.store.setState({
-            isFilling: true,
-            fillRange: selection
-        });
+        this.engine.store.setState({ isFilling: true, fillRange: selection });
     }
 
     private updateFillRange(x: number, y: number, selection: any) {
@@ -200,7 +510,6 @@ export class MouseHandler {
         if (!cell) return;
 
         const sourceRange = selection.ranges[selection.ranges.length - 1];
-
         this.engine.store.setState({
             fillRange: {
                 primary: cell,
@@ -216,7 +525,6 @@ export class MouseHandler {
 
     private updateDragSelection(x: number, y: number) {
         if (!this.dragStart) return;
-
         const cell = this.getCellAt(x, y);
         if (!cell) return;
 
@@ -237,17 +545,11 @@ export class MouseHandler {
         if (selection && fillRange && fillRange.ranges.length > 0) {
             const source = selection.ranges[selection.ranges.length - 1];
             const target = fillRange.ranges[0];
-
             this.engine.model.fillData(source, target);
-
             this.engine.store.setState({
-                selection: {
-                    primary: selection.primary,
-                    ranges: [target]
-                }
+                selection: { primary: selection.primary, ranges: [target] }
             });
         }
-
         this.engine.store.setState({ isFilling: false, fillRange: null });
     }
 }
