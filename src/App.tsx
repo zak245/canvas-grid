@@ -8,8 +8,8 @@ import type { GridColumn } from './types/grid';
 import type { GridConfig } from './config/GridConfig';
 import { GridEngine } from './engine/GridEngine';
 
-// Generate initial data - 10 rows for testing add row experience
-const { columns: initialCols, rows: initialRows } = generateMockData(10, false);
+// Generate initial data - 20 rows for testing add row experience
+const { columns: initialCols, rows: initialRows } = generateMockData(24, false);
 
 // NEW: Create grid config using platform foundation
 const gridConfig: Partial<GridConfig> = {

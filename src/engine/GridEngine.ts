@@ -18,12 +18,6 @@ export interface GridEngineState {
     fillRange: GridSelection | null;
     hoverPosition: { x: number; y: number } | null;  // For tooltips
     editingCell: { col: number; row: number } | null;
-    // NEW: Reorder State
-    reorderState: {
-        colIndex: number; // Index in visibleColumns
-        dragX: number;    // Visual X position relative to canvas
-        targetIndex: number; // Where it would drop
-    } | null;
     // NEW: Overlay State (Single Source of Truth)
     activeHeaderMenu: { colId: string, x: number, y: number } | null;
     activeAddColumnMenu: { x: number, y: number } | null;
@@ -105,7 +99,6 @@ export class GridEngine {
             fillRange: null,
             hoverPosition: null,
             editingCell: null,
-            reorderState: null,
             activeHeaderMenu: null,
             activeAddColumnMenu: null,
         }));
@@ -134,7 +127,6 @@ export class GridEngine {
             fillRange: null,
             hoverPosition: null,
             editingCell: null,
-            reorderState: null,
             activeHeaderMenu: null,
             activeAddColumnMenu: null,
         }));
@@ -300,6 +292,22 @@ export class GridEngine {
         }
     }
 
+    // Helper to scroll to bottom
+    private scrollToBottom() {
+        const rowCount = this.model.getRowCount();
+        const { height, scrollLeft } = this.viewport.getState();
+        const { rowHeight, headerHeight } = this.theme;
+        
+        // Calculate total content height including the ghost row (+1)
+        const totalHeight = (rowCount + 1) * rowHeight;
+        
+        // Calculate max scroll top (Content Height - Viewport Content Area)
+        const viewportContentHeight = height - headerHeight;
+        const maxScrollTop = Math.max(0, totalHeight - viewportContentHeight);
+        
+        this.scroll(maxScrollTop, scrollLeft);
+    }
+
     // --- Actions ---
     resize(width: number, height: number) {
         this.viewport.updateState({ width, height });
@@ -340,6 +348,15 @@ export class GridEngine {
 
             // After hook
             this.lifecycle.onRowAdd?.(newRow);
+
+            // Trigger render
+            this.notifyDataChange();
+            
+            // Defer scrolling to ensure data is settled and UI is ready
+            setTimeout(() => {
+                this.scrollToBottom();
+                this.render();
+            }, 10);
 
             return newRow;
         } catch (error) {

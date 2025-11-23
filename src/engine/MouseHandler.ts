@@ -11,10 +11,6 @@ export class MouseHandler {
     private resizingStartWidth: number = 0;
     private resizingStartX: number = 0;
 
-    // Reorder State
-    private isReordering = false;
-    private reorderCandidate: { colIndex: number, startX: number } | null = null;
-
     constructor(private engine: GridEngine) { }
 
     handleMouseDown = (e: MouseEvent) => {
@@ -117,22 +113,7 @@ export class MouseHandler {
             return;
         }
 
-        // 2. Handle Reordering
-        if (this.reorderCandidate && !this.isReordering) {
-            // Check threshold to start drag
-            if (Math.abs(e.clientX - this.reorderCandidate.startX) > 5) {
-                this.isReordering = true;
-                canvas.style.cursor = 'grabbing';
-            }
-        }
-
-        if (this.isReordering && this.reorderCandidate) {
-            this.updateReorderState(e.clientX);
-            canvas.style.cursor = 'grabbing';
-            return;
-        }
-
-        // 3. Handle Cursor Styling
+        // 2. Handle Cursor Styling
         if (e.offsetY < theme.headerHeight) {
             // Header Hover Logic
             const { colIndex, onEdge } = this.getHeaderAt(e.offsetX);
@@ -160,7 +141,7 @@ export class MouseHandler {
             canvas.style.cursor = 'default';
         }
 
-        // 4. Handle Cell Drag Operations
+        // 3. Handle Cell Drag Operations
         if (isFilling && selection) {
             this.updateFillRange(e.offsetX, e.offsetY, selection);
         } else if (this.isDragging && this.dragStart) {
@@ -170,31 +151,22 @@ export class MouseHandler {
 
     handleMouseUp = (e: MouseEvent) => {
         const { isFilling, selection, fillRange } = this.engine.store.getState();
+        const { theme } = this.engine;
 
-        // Handle Reorder Drop
-        if (this.isReordering && this.reorderCandidate) {
-            const targetIndex = this.calculateReorderTarget(e.clientX);
-            // Move column if index changed
-            if (targetIndex !== this.reorderCandidate.colIndex) {
-                this.engine.moveColumn(this.reorderCandidate.colIndex, targetIndex);
-            }
+        // Handle Column Selection (Click on Header)
+        // Only if we clicked in the header area and were NOT resizing
+        if (e.offsetY < theme.headerHeight && !this.isResizing) {
+            const { colIndex, xInCol } = this.getHeaderAt(e.offsetX);
+            const visibleCols = this.engine.model.getVisibleColumns();
             
-            // Reset
-            this.isReordering = false;
-            this.reorderCandidate = null;
-            this.engine.store.setState({ reorderState: null });
-            // Force render to clear visuals
-            // this.engine.render(); // moveColumn calls render
-            return;
-        }
-
-        // Handle Click Selection (if not reordered)
-        if (this.reorderCandidate) {
-            const column = this.engine.model.getVisibleColumns()[this.reorderCandidate.colIndex];
-            if (column) {
-                 this.engine.selectColumn(column.id, e.metaKey || e.ctrlKey, e.shiftKey);
+            if (colIndex >= 0) {
+                const column = visibleCols[colIndex];
+                // Check if we clicked the menu area (don't select if clicking menu)
+                // Menu area is right 30px
+                 if (xInCol <= column.width - 30) {
+                     this.engine.selectColumn(column.id, e.metaKey || e.ctrlKey, e.shiftKey);
+                 }
             }
-            this.reorderCandidate = null;
         }
 
         if (isFilling) {
@@ -235,11 +207,8 @@ export class MouseHandler {
         const totalWidth = visibleCols.reduce((sum, c) => sum + c.width, 0);
         const x = e.offsetX + scrollLeft - theme.rowHeaderWidth;
         
-        console.log('[MouseHandler] Header Click:', { x, totalWidth, colIndex, xInCol });
-
         // Use a small tolerance for ghost column click
         if (x >= totalWidth - 5 && x < totalWidth + 55) {
-            console.log('[MouseHandler] Ghost Column Click Detected');
             e.preventDefault();
             e.stopPropagation();
 
@@ -256,11 +225,9 @@ export class MouseHandler {
             
             const MENU_WIDTH = 300;
             let menuX = ghostStartX;
-            
             if (menuX + MENU_WIDTH > window.innerWidth) {
                 menuX = window.innerWidth - MENU_WIDTH - 10;
             }
-            
             const menuY = rect.top + theme.headerHeight;
 
             this.engine.store.setState({
@@ -290,7 +257,6 @@ export class MouseHandler {
         // 3. Check Menu Click (Right side)
         // Increased to 30px to match renderer icon space
         if (xInCol > column.width - 30) {
-            console.log('[MouseHandler] Menu Click Detected');
             e.preventDefault();
             e.stopPropagation();
             
@@ -309,12 +275,7 @@ export class MouseHandler {
             
             const MENU_WIDTH = 200;
             let menuX = colEndX - MENU_WIDTH; // Align right always
-            
-            // Removed force-left-align for narrow columns to satisfy user request
-            // if (menuX < colStartX) menuX = colStartX; 
-            
             if (menuX + MENU_WIDTH > window.innerWidth) menuX = window.innerWidth - MENU_WIDTH - 10;
-            
             const menuY = rect.top + theme.headerHeight;
 
             this.engine.store.setState({
@@ -324,63 +285,11 @@ export class MouseHandler {
             return;
         }
 
-        // 4. Prepare for Reorder or Select
+        // 4. General Header Click (Selection Prep)
         // Close menus
         this.engine.store.setState({ activeHeaderMenu: null, activeAddColumnMenu: null });
-
-        this.reorderCandidate = { 
-            colIndex, 
-            startX: e.clientX 
-        };
-    }
-
-    private updateReorderState(clientX: number) {
-        if (!this.reorderCandidate) return;
-
-        const { theme } = this.engine;
-        const { scrollLeft } = this.engine.viewport.getState();
         
-        // Calculate current visual X relative to canvas
-        // The ghost should follow the mouse
-        // dragX is just the offset from start
-        const deltaX = clientX - this.reorderCandidate.startX;
-        
-        // Determine target index
-        const targetIndex = this.calculateReorderTarget(clientX);
-
-        this.engine.store.setState({
-            reorderState: {
-                colIndex: this.reorderCandidate.colIndex,
-                dragX: clientX, // We'll use absolute mouse X for drawing ghost
-                targetIndex
-            }
-        });
-        
-        // Force render loop to draw ghost
-        // The loop is running, but we need to make sure it picks up the state
-    }
-
-    private calculateReorderTarget(clientX: number): number {
-        const { theme } = this.engine;
-        const { scrollLeft } = this.engine.viewport.getState();
-        
-        // Adjust X to grid coordinates
-        const gridX = clientX - theme.rowHeaderWidth + scrollLeft;
-        
-        const columns = this.engine.model.getVisibleColumns();
-        let currentX = 0;
-        
-        for (let i = 0; i < columns.length; i++) {
-            const width = columns[i].width;
-            const midPoint = currentX + width / 2;
-            
-            if (gridX < midPoint) {
-                return i;
-            }
-            currentX += width;
-        }
-        
-        return columns.length;
+        // We don't start drag anymore. Selection happens on MouseUp.
     }
 
     private getHeaderAt(x: number): { colIndex: number; onEdge: boolean; xInCol: number } {

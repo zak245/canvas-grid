@@ -116,7 +116,8 @@ export const GridContainer: React.FC<GridContainerProps> = ({
 
             const { scrollTop, scrollLeft } = engine.viewport.getState();
             const totalWidth = effectiveColumns.reduce((sum, col) => sum + col.width, 0) + 50;
-            const totalHeight = effectiveRows.length * engine.theme.rowHeight;
+            // Add extra row height for "Add Row" ghost row
+            const totalHeight = (effectiveRows.length + 1) * engine.theme.rowHeight;
             const viewportState = engine.viewport.getState();
             const newScrollLeft = Math.max(0, Math.min(totalWidth - viewportState.width + engine.theme.rowHeaderWidth, scrollLeft + e.deltaX));
             const newScrollTop = Math.max(0, Math.min(totalHeight - viewportState.height + engine.theme.headerHeight, scrollTop + e.deltaY));

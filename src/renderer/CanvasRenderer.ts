@@ -91,27 +91,49 @@ export class CanvasRenderer {
             y += theme.rowHeight;
         }
 
-        // NEW: Draw "+ Add Row" Button at bottom
+        // NEW: Draw "+ Add Row" Ghost Row at bottom
         const totalRows = engine.model.getRowCount();
         if (rowStartIndex + visibleRows.length >= totalRows) {
-            const totalWidth = engine.model.getVisibleColumns().reduce((acc, col) => acc + col.width, 0);
             const addRowY = totalRows * theme.rowHeight;
             
             // Only draw if visible
             if (addRowY < scrollTop + height) {
-                // Background
-                ctx.fillStyle = '#f9fafb'; // Gray-50
-                ctx.fillRect(0, addRowY, totalWidth, theme.rowHeight);
+                let x = 0;
+                // Calculate x offset for visible columns
+                for (let i = 0; i < colStartIndex; i++) {
+                    x += engine.model.getVisibleColumns()[i]?.width || 0;
+                }
+
+                ctx.save();
                 
-                // Border
-                ctx.strokeStyle = theme.gridLineColor;
-                ctx.strokeRect(0, addRowY, totalWidth, theme.rowHeight);
+                for (const col of visibleColumns) {
+                    // Ghost Cell Background
+                    ctx.fillStyle = '#f9fafb'; 
+                    ctx.fillRect(x, addRowY, col.width, theme.rowHeight);
+                    
+                    // Ghost Cell Border
+                    ctx.strokeStyle = theme.gridLineColor;
+                    ctx.strokeRect(x, addRowY, col.width, theme.rowHeight);
+                    
+                    x += col.width;
+                }
                 
-                // Text
-                ctx.fillStyle = '#6b7280'; // Gray-500
+                // Draw Sticky Text
+                ctx.fillStyle = '#6b7280';
                 ctx.font = `${theme.fontSize}px ${theme.fontFamily}`;
                 ctx.textAlign = 'left';
-                ctx.fillText('+ Add Row', 12, addRowY + theme.rowHeight / 2);
+                ctx.textBaseline = 'middle';
+                
+                // Keep text visible on left edge
+                // We want to draw at Screen X = rowHeaderWidth + 12 to clear the fixed header
+                // Translation X = -scrollLeft + rowHeaderWidth
+                // Draw X = TargetScreenX - TranslationX = (rowHeaderWidth + 12) - (-scrollLeft + rowHeaderWidth)
+                // Draw X = 12 + scrollLeft
+                const stickyX = 12 + scrollLeft;
+                
+                ctx.fillText('+ Add Row', stickyX, addRowY + theme.rowHeight / 2);
+                
+                ctx.restore();
             }
         }
 
@@ -238,174 +260,105 @@ export class CanvasRenderer {
         // Stick to top, scroll horizontally
         ctx.translate(theme.rowHeaderWidth - scrollLeft, 0);
 
-        // Draw Reorder Visuals
-        const reorderState = engine.store.getState().reorderState;
-        
+        // Draw Clean Background
+        const totalVisibleWidth = visibleColumns.reduce((sum, col) => sum + col.width, 0) + 50; // +50 for ghost
+        ctx.fillStyle = theme.headerBackgroundColor;
+        ctx.fillRect(0, 0, totalVisibleWidth, theme.headerHeight);
+
+        // Draw Bottom Border
+        ctx.strokeStyle = theme.borderColor;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, theme.headerHeight);
+        ctx.lineTo(totalVisibleWidth, theme.headerHeight);
+        ctx.stroke();
+
         let x = 0;
         for (let i = 0; i < visibleColumns.length; i++) {
             const col = visibleColumns[i];
-            let drawX = x;
-            let isDragged = false;
+            
+            // Background (per cell)
+            ctx.fillStyle = theme.headerBackgroundColor;
+            ctx.fillRect(x, 0, col.width, theme.headerHeight);
 
-            if (reorderState) {
-                const { colIndex, targetIndex } = reorderState;
-                const draggedWidth = visibleColumns[colIndex].width;
+            // Border
+            ctx.strokeStyle = theme.borderColor;
+            ctx.strokeRect(x, 0, col.width, theme.headerHeight);
 
-                if (i === colIndex) {
-                    isDragged = true;
-                } else if (i > colIndex && i < targetIndex) {
-                    // Shift Left (fill gap)
-                    drawX -= draggedWidth;
-                } else if (i < colIndex && i >= targetIndex) {
-                    // Shift Right (make room)
-                    drawX += draggedWidth;
-                }
+            // Text
+            ctx.fillStyle = theme.headerColor || '#374151';
+            ctx.font = `${theme.headerFontSize}px ${theme.headerFontFamily}`;
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'left';
+            
+            const textPadding = 8;
+            const iconSpace = 28;
+            const availableWidth = col.width - (textPadding * 2) - iconSpace;
+            
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(x + textPadding, 0, availableWidth, theme.headerHeight);
+            ctx.clip();
+            ctx.fillText(col.title, x + textPadding, theme.headerHeight / 2);
+            ctx.restore();
+
+            // Icons (Sort/Menu)
+            const sort = sortState.find(s => s.columnId === col.id);
+            const iconX = x + col.width - 20;
+            const iconY = theme.headerHeight / 2;
+            
+            // Check Hover
+            const hoverPos = engine.store.getState().hoverPosition;
+            let isHovered = false;
+            if (hoverPos && hoverPos.y < theme.headerHeight) {
+                 const relativeHoverX = hoverPos.x - theme.rowHeaderWidth + scrollLeft;
+                 if (relativeHoverX >= x && relativeHoverX < x + col.width) isHovered = true;
             }
 
-            if (isDragged) {
-                // Draw Empty Slot (Gap)
-                ctx.fillStyle = '#f3f4f6'; // Gray-100
-                ctx.fillRect(drawX, 0, col.width, theme.headerHeight);
-                ctx.strokeStyle = '#e5e7eb'; // Gray-200 border
-                ctx.strokeRect(drawX, 0, col.width, theme.headerHeight);
-                // No text/icons
-            } else {
-                // Draw Column at shifted position
-                // Background
-                ctx.fillStyle = theme.headerBackgroundColor;
-                ctx.fillRect(drawX, 0, col.width, theme.headerHeight);
-
-                // Border
-                ctx.strokeStyle = theme.borderColor;
-                ctx.strokeRect(drawX, 0, col.width, theme.headerHeight);
-
-                // Text
-                ctx.fillStyle = theme.headerColor || '#374151';
-                ctx.font = `${theme.headerFontSize}px ${theme.headerFontFamily}`;
-                ctx.textBaseline = 'middle';
-                ctx.textAlign = 'left';
-                
-                // Text Truncation
-                const textPadding = 8;
-                const iconSpace = 28;
-                const availableWidth = col.width - (textPadding * 2) - iconSpace;
-                
-                ctx.save();
+            if (sort) {
                 ctx.beginPath();
-                ctx.rect(drawX + textPadding, 0, availableWidth, theme.headerHeight);
-                ctx.clip();
-                ctx.fillText(col.title, drawX + textPadding, theme.headerHeight / 2);
-                ctx.restore();
-
-                // Sort Icon OR Menu Trigger
-                const sort = sortState.find(s => s.columnId === col.id);
-                const iconX = drawX + col.width - 20;
-                const iconY = theme.headerHeight / 2;
-
-                // Check Hover
-                const hoverPos = engine.store.getState().hoverPosition;
-                let isHovered = false;
-                if (hoverPos && hoverPos.y < theme.headerHeight) {
-                    // Note: Mouse detection is on LOGICAL position (x), not visual (drawX)
-                    // But for visual consistency, if I hover the *shifted* column, I expect the icon.
-                    // However, MouseHandler uses logical position. 
-                    // Syncing them perfectly is hard without sharing logic.
-                    // For now, stick to logical hover check
-                    const relativeHoverX = hoverPos.x - theme.rowHeaderWidth + scrollLeft;
-                    if (relativeHoverX >= x && relativeHoverX < x + col.width) {
-                        isHovered = true;
-                    }
+                ctx.fillStyle = '#2563eb';
+                if (sort.direction === 'asc') {
+                    ctx.moveTo(iconX, iconY + 3);
+                    ctx.lineTo(iconX + 4, iconY - 3);
+                    ctx.lineTo(iconX + 8, iconY + 3);
+                } else {
+                    ctx.moveTo(iconX, iconY - 3);
+                    ctx.lineTo(iconX + 4, iconY + 3);
+                    ctx.lineTo(iconX + 8, iconY - 3);
                 }
-
-                if (sort) {
-                    // ... sort arrow ...
-                    ctx.beginPath();
-                    ctx.fillStyle = '#2563eb';
-                    if (sort.direction === 'asc') {
-                        ctx.moveTo(iconX, iconY + 3);
-                        ctx.lineTo(iconX + 4, iconY - 3);
-                        ctx.lineTo(iconX + 8, iconY + 3);
-                    } else {
-                        ctx.moveTo(iconX, iconY - 3);
-                        ctx.lineTo(iconX + 4, iconY + 3);
-                        ctx.lineTo(iconX + 8, iconY - 3);
-                    }
-                    ctx.fill();
-                } else if (isHovered) {
-                    // ... chevron ...
-                    ctx.beginPath();
-                    ctx.strokeStyle = '#9ca3af';
-                    ctx.lineWidth = 1.5;
-                    ctx.moveTo(iconX, iconY - 2);
-                    ctx.lineTo(iconX + 4, iconY + 2);
-                    ctx.lineTo(iconX + 8, iconY - 2);
-                    ctx.stroke();
-                }
+                ctx.fill();
+            } else if (isHovered) {
+                ctx.beginPath();
+                ctx.strokeStyle = '#9ca3af';
+                ctx.lineWidth = 1.5;
+                ctx.moveTo(iconX, iconY - 2);
+                ctx.lineTo(iconX + 4, iconY + 2);
+                ctx.lineTo(iconX + 8, iconY - 2);
+                ctx.stroke();
             }
 
             x += col.width;
         }
 
         // Ghost Column (+)
-        // Draw at 'x' which is now at the end of visible columns
         const ghostWidth = 50;
-        ctx.fillStyle = '#f9fafb'; // Gray-50
+        ctx.fillStyle = '#f9fafb'; 
         ctx.fillRect(x, 0, ghostWidth, theme.headerHeight);
         
         ctx.strokeStyle = theme.borderColor;
         ctx.strokeRect(x, 0, ghostWidth, theme.headerHeight);
         
-        // Draw "+"
-        ctx.strokeStyle = '#9ca3af'; // Gray-400
+        ctx.strokeStyle = '#9ca3af'; 
         ctx.lineWidth = 2;
         ctx.beginPath();
         const centerX = x + ghostWidth / 2;
         const centerY = theme.headerHeight / 2;
-        // Horizontal line
         ctx.moveTo(centerX - 5, centerY);
         ctx.lineTo(centerX + 5, centerY);
-        // Vertical line
         ctx.moveTo(centerX, centerY - 5);
         ctx.lineTo(centerX, centerY + 5);
         ctx.stroke();
-
-        // Draw Ghost Header (Overlay)
-        if (reorderState) {
-            const draggedCol = visibleColumns[reorderState.colIndex];
-            if (draggedCol) {
-                // Center ghost on mouse
-                const ghostX = reorderState.dragX - theme.rowHeaderWidth + scrollLeft - (draggedCol.width / 2);
-                
-                ctx.save();
-                // Enhanced Shadow for "lifting" effect
-                ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
-                ctx.shadowBlur = 15;
-                ctx.shadowOffsetY = 5;
-                
-                // Background (slightly transparent to see grid below if needed, but opaque is cleaner)
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-                ctx.fillRect(ghostX, 0, draggedCol.width, theme.headerHeight);
-                
-                // Border (Blue to indicate active state)
-                ctx.strokeStyle = '#2563eb';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(ghostX, 0, draggedCol.width, theme.headerHeight);
-                
-                // Text
-                ctx.fillStyle = theme.headerColor || '#374151';
-                ctx.font = `${theme.headerFontSize}px ${theme.headerFontFamily}`;
-                ctx.textAlign = 'left';
-                ctx.textBaseline = 'middle';
-                
-                // Clip text
-                ctx.beginPath();
-                ctx.rect(ghostX + 8, 0, draggedCol.width - 16, theme.headerHeight);
-                ctx.clip();
-                ctx.fillText(draggedCol.title, ghostX + 8, theme.headerHeight / 2);
-                
-                ctx.restore();
-            }
-        }
 
         ctx.restore();
     }
