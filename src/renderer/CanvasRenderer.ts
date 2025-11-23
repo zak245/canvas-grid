@@ -40,6 +40,7 @@ export class CanvasRenderer {
         // Draw Rows
         let y = rowStartIndex * theme.rowHeight;
         for (const row of visibleRows) {
+            // ... (existing row drawing logic) ...
             // Draw Cells
             let x = 0;
 
@@ -88,6 +89,30 @@ export class CanvasRenderer {
                 x += col.width;
             }
             y += theme.rowHeight;
+        }
+
+        // NEW: Draw "+ Add Row" Button at bottom
+        const totalRows = engine.model.getRowCount();
+        if (rowStartIndex + visibleRows.length >= totalRows) {
+            const totalWidth = engine.model.getColumns().reduce((acc, col) => acc + col.width, 0);
+            const addRowY = totalRows * theme.rowHeight;
+            
+            // Only draw if visible
+            if (addRowY < scrollTop + height) {
+                // Background
+                ctx.fillStyle = '#f9fafb'; // Gray-50
+                ctx.fillRect(0, addRowY, totalWidth, theme.rowHeight);
+                
+                // Border
+                ctx.strokeStyle = theme.gridLineColor;
+                ctx.strokeRect(0, addRowY, totalWidth, theme.rowHeight);
+                
+                // Text
+                ctx.fillStyle = '#6b7280'; // Gray-500
+                ctx.font = `${theme.fontSize}px ${theme.fontFamily}`;
+                ctx.textAlign = 'left';
+                ctx.fillText('+ Add Row', 12, addRowY + theme.rowHeight / 2);
+            }
         }
 
         ctx.restore();

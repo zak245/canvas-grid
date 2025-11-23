@@ -4,7 +4,12 @@ import { Viewport } from './Viewport';
 import { CanvasRenderer } from '../renderer/CanvasRenderer';
 import { InputController } from './InputController';
 import { AIStreamer } from '../services/AIStreamer';
-import { GridSelection, GridTheme } from '../types/grid';
+import type { GridSelection, GridTheme, GridRow, GridColumn, CellValue } from '../types/grid';
+import type { GridConfig, LifecycleHooks } from '../config/GridConfig';
+import type { DataAdapter } from '../adapters/DataAdapter';
+import type { ColumnSort, CellChange } from '../types/platform';
+import { LocalAdapter } from '../adapters/LocalAdapter';
+import { mergeConfig, DEFAULT_CONFIG, validateConfig } from '../config/GridConfig';
 
 export interface GridEngineState {
     selection: GridSelection | null;
@@ -22,6 +27,11 @@ export class GridEngine {
     public store: StoreApi<GridEngineState>;
     public theme: GridTheme;
 
+    // Platform components (NEW)
+    private config: GridConfig | null = null;
+    private adapter: DataAdapter | null = null;
+    private lifecycle: LifecycleHooks = {};
+
     // Rendering
     private canvas: HTMLCanvasElement | null = null;
     private ctx: CanvasRenderingContext2D | null = null;
@@ -34,14 +44,180 @@ export class GridEngine {
     // AI
     public aiStreamer: AIStreamer | null = null;
 
-    constructor() {
+    // Constructor overloads for backward compatibility
+    constructor();
+    constructor(config: Partial<GridConfig>);
+    constructor(config?: Partial<GridConfig>) {
+        if (config) {
+            // NEW: Config-based initialization
+            this.initWithConfig(config);
+        } else {
+            // OLD: Legacy initialization (backward compatible)
+            this.initLegacy();
+        }
+    }
+
+    // NEW: Config-based initialization
+    private initWithConfig(userConfig: Partial<GridConfig>) {
+        // Merge with defaults
+        this.config = mergeConfig(userConfig);
+        this.lifecycle = this.config.lifecycle;
+
+        // Validate config
+        const errors = validateConfig(this.config);
+        if (errors.length > 0) {
+            console.error('[GridEngine] Configuration errors:', errors);
+            throw new Error(`Invalid configuration: ${errors.join(', ')}`);
+        }
+
+        // Initialize adapter
+        this.adapter = this.initializeAdapter(this.config);
+
+        // Initialize model with adapter
+        this.model = new GridModel(this.adapter);
+
+        // Initialize viewport
+        this.viewport = new Viewport({
+            width: 800,
+            height: 600
+        });
+
+        // Initialize theme
+        this.theme = {
+            ...this.getDefaultTheme(),
+            ...this.config.ui.theme,
+        };
+
+        // Initialize store
+        this.store = createStore<GridEngineState>(() => ({
+            selection: null,
+            isDragging: false,
+            isFilling: false,
+            fillRange: null,
+            hoverPosition: null,
+            editingCell: null,
+        }));
+
+        // Call initialization hook
+        this.lifecycle.onInit?.();
+
+        // Load initial data
+        this.loadInitialData();
+    }
+
+    // OLD: Legacy initialization (backward compatible)
+    private initLegacy() {
         this.model = new GridModel();
         this.viewport = new Viewport({
             width: 800,
             height: 600
         });
 
-        this.theme = {
+        this.theme = this.getDefaultTheme();
+
+        this.store = createStore<GridEngineState>(() => ({
+            selection: null,
+            isDragging: false,
+            isFilling: false,
+            fillRange: null,
+            hoverPosition: null,
+            editingCell: null,
+        }));
+    }
+
+    // Initialize adapter based on config
+    private initializeAdapter(config: GridConfig): DataAdapter {
+        // Custom adapter
+        if (config.dataSource.adapter) {
+            return config.dataSource.adapter;
+        }
+
+        // Local mode
+        if (config.dataSource.mode === 'local') {
+            if (!config.dataSource.initialData) {
+                throw new Error('Local mode requires initialData');
+            }
+            return new LocalAdapter(config.dataSource.initialData);
+        }
+
+        // Backend mode
+        if (config.dataSource.mode === 'backend') {
+            if (!config.dataSource.endpoints) {
+                throw new Error('Backend mode requires endpoints or custom adapter');
+            }
+            // Note: BackendAdapter would be imported here
+            // For now, throw error as it's not implemented yet
+            throw new Error('BackendAdapter not implemented yet. Use MockBackendAdapter or custom adapter.');
+        }
+
+        throw new Error(`Unknown data source mode: ${config.dataSource.mode}`);
+    }
+
+    // Subscribe to model updates (used for React integration)
+    public subscribeToDataChange(callback: () => void): () => void {
+        // Create a temporary wrapper that we can call internally
+        const wrappedCallback = () => callback();
+        
+        // Add to a list of subscribers
+        this.dataChangeSubscribers.push(wrappedCallback);
+        
+        return () => {
+            this.dataChangeSubscribers = this.dataChangeSubscribers.filter(cb => cb !== wrappedCallback);
+        };
+    }
+    
+    private dataChangeSubscribers: (() => void)[] = [];
+    
+    private notifyDataChange() {
+        this.dataChangeSubscribers.forEach(cb => cb());
+    }
+
+    // Subscribe to sort changes (NEW)
+    public subscribeToSortChange(callback: (sortState: ColumnSort[]) => void): () => void {
+        const wrappedCallback = (sort: ColumnSort[]) => callback(sort);
+        this.sortChangeSubscribers.push(wrappedCallback);
+        return () => {
+            this.sortChangeSubscribers = this.sortChangeSubscribers.filter(cb => cb !== wrappedCallback);
+        };
+    }
+
+    private sortChangeSubscribers: ((sort: ColumnSort[]) => void)[] = [];
+
+    private notifySortChange(sortState: ColumnSort[]) {
+        this.sortChangeSubscribers.forEach(cb => cb(sortState));
+    }
+
+    // Load initial data from adapter
+    private async loadInitialData() {
+        if (!this.adapter) return;
+
+        try {
+            this.lifecycle.onBeforeDataLoad?.();
+
+            const data = await this.adapter.fetchData({});
+
+            // Allow lifecycle hook to transform data
+            const processedData = this.lifecycle.onDataLoad?.(data) || data;
+
+            this.model.setColumns(processedData.columns);
+            this.model.setRows(processedData.rows);
+            
+            // Notify subscribers that data has changed
+            this.notifyDataChange();
+
+        } catch (error) {
+            this.lifecycle.onDataLoadError?.(error as Error);
+            this.lifecycle.onError?.({
+                type: 'data:load',
+                message: (error as Error).message,
+                timestamp: Date.now(),
+            });
+        }
+    }
+
+    // Default theme
+    private getDefaultTheme(): GridTheme {
+        return {
             headerHeight: 40,
             rowHeight: 32,
             rowHeaderWidth: 50,
@@ -55,15 +231,6 @@ export class GridEngine {
             headerFontFamily: 'Inter, sans-serif',
             headerFontSize: 12,
         };
-
-        this.store = createStore<GridEngineState>(() => ({
-            selection: null,
-            isDragging: false,
-            isFilling: false,
-            fillRange: null,
-            hoverPosition: null,
-            editingCell: null,
-        }));
     }
 
     // --- Initialization ---
@@ -122,5 +289,421 @@ export class GridEngine {
 
     scroll(scrollTop: number, scrollLeft: number) {
         this.viewport.updateState({ scrollTop, scrollLeft });
+    }
+
+    // ===== NEW: PUBLIC API METHODS =====
+
+    /**
+     * Add a new row
+     */
+    async addRow(row: Partial<GridRow>): Promise<GridRow> {
+        if (!this.adapter) {
+            throw new Error('Adapter not initialized. Use config-based constructor.');
+        }
+
+        // Before hook
+        const processedRow = this.lifecycle.onBeforeRowAdd?.(row);
+        if (processedRow === false) {
+            throw new Error('Row addition cancelled by lifecycle hook');
+        }
+
+        const rowToAdd = processedRow || row;
+
+        try {
+            // Call adapter
+            const newRow = await this.adapter.addRow(rowToAdd);
+
+            // Update model
+            this.model.addRow(newRow);
+
+            // After hook
+            this.lifecycle.onRowAdd?.(newRow);
+
+            return newRow;
+        } catch (error) {
+            this.lifecycle.onError?.({
+                type: 'row:add',
+                message: (error as Error).message,
+                timestamp: Date.now(),
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Update an existing row
+     */
+    async updateRow(rowId: string, changes: Partial<GridRow>): Promise<GridRow> {
+        if (!this.adapter) {
+            throw new Error('Adapter not initialized. Use config-based constructor.');
+        }
+
+        // Before hook
+        const processedChanges = this.lifecycle.onBeforeRowUpdate?.(rowId, changes);
+        if (processedChanges === false) {
+            throw new Error('Row update cancelled by lifecycle hook');
+        }
+
+        const changesToApply = processedChanges || changes;
+
+        try {
+            // Call adapter
+            const updatedRow = await this.adapter.updateRow(rowId, changesToApply);
+
+            // Update model
+            this.model.updateRow(updatedRow);
+
+            // After hook
+            this.lifecycle.onRowUpdate?.(updatedRow);
+
+            return updatedRow;
+        } catch (error) {
+            this.lifecycle.onError?.({
+                type: 'row:update',
+                message: (error as Error).message,
+                timestamp: Date.now(),
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Delete a row
+     */
+    async deleteRow(rowId: string): Promise<void> {
+        if (!this.adapter) {
+            throw new Error('Adapter not initialized. Use config-based constructor.');
+        }
+
+        // Before hook
+        const shouldDelete = this.lifecycle.onBeforeRowDelete?.(rowId);
+        if (shouldDelete === false) {
+            return; // Cancelled
+        }
+
+        try {
+            // Call adapter
+            await this.adapter.deleteRow(rowId);
+
+            // Update model
+            this.model.deleteRow(rowId);
+
+            // After hook
+            this.lifecycle.onRowDelete?.(rowId);
+        } catch (error) {
+            this.lifecycle.onError?.({
+                type: 'row:delete',
+                message: (error as Error).message,
+                timestamp: Date.now(),
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Update a single cell
+     */
+    async updateCell(rowIndex: number, columnId: string, value: CellValue): Promise<void> {
+        if (!this.adapter) {
+            throw new Error('Adapter not initialized. Use config-based constructor.');
+        }
+
+        const oldValue = this.model.getCell(rowIndex, columnId)?.value;
+
+        // Validation hook
+        const validationResult = this.lifecycle.onCellValidate?.({
+            rowIndex,
+            columnId,
+            value,
+            oldValue,
+        });
+
+        if (validationResult && !validationResult.valid) {
+            throw new Error(validationResult.error || 'Cell validation failed');
+        }
+
+        // Before hook
+        const processedValue = this.lifecycle.onBeforeCellChange?.({
+            rowIndex,
+            columnId,
+            value,
+            oldValue,
+        });
+
+        if (processedValue === false) {
+            return; // Cancelled
+        }
+
+        const valueToSet = processedValue !== undefined ? processedValue : value;
+
+        try {
+            // Call adapter
+            await this.adapter.updateCell(rowIndex, columnId, valueToSet);
+
+            // Update model
+            this.model.setCellValue(rowIndex, columnId, valueToSet);
+
+            // After hook
+            this.lifecycle.onCellChange?.({
+                rowIndex,
+                columnId,
+                value: valueToSet,
+                oldValue,
+            });
+        } catch (error) {
+            this.lifecycle.onError?.({
+                type: 'cell:update',
+                message: (error as Error).message,
+                timestamp: Date.now(),
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Sort by column
+     */
+    async sort(columnId: string, direction?: 'asc' | 'desc'): Promise<void> {
+        if (!this.adapter) {
+            throw new Error('Adapter not initialized. Use config-based constructor.');
+        }
+
+        let newSortState: ColumnSort[];
+
+        if (direction) {
+            // Explicit direction from menu
+            newSortState = [{ columnId, direction }];
+        } else {
+            // Toggle sort state (click on header)
+            const currentSort = this.model.getSortState();
+            if (currentSort && currentSort[0]?.columnId === columnId) {
+                // Toggle direction
+                if (currentSort[0].direction === 'asc') {
+                    newSortState = [{ columnId, direction: 'desc' }];
+                } else {
+                    newSortState = []; // Clear sort
+                }
+            } else {
+                newSortState = [{ columnId, direction: 'asc' }];
+            }
+        }
+
+        // Before hook
+        const processedSort = this.lifecycle.onBeforeSort?.(newSortState);
+        if (processedSort === false) {
+            return; // Cancelled
+        }
+
+        const sortToApply = processedSort || newSortState;
+
+        try {
+            // Call adapter
+            await this.adapter.sort(sortToApply);
+
+            // Update model sort state
+            this.model.setSortState(sortToApply);
+
+            // Notify subscribers (React UI)
+            this.notifySortChange(sortToApply);
+
+            // For local mode, we need to re-fetch data to get sorted rows
+            if (this.config?.dataSource.mode === 'local') {
+                const data = await this.adapter.fetchData({});
+                this.model.setRows(data.rows);
+                
+                // Notify data change to re-render rows
+                this.notifyDataChange();
+            }
+
+            // After hook
+            this.lifecycle.onSort?.(sortToApply);
+        } catch (error) {
+            this.lifecycle.onError?.({
+                type: 'sort',
+                message: (error as Error).message,
+                timestamp: Date.now(),
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Add a column
+     */
+    async addColumn(column: GridColumn): Promise<GridColumn> {
+        if (!this.adapter) {
+            throw new Error('Adapter not initialized. Use config-based constructor.');
+        }
+
+        // Before hook
+        const processedColumn = this.lifecycle.onBeforeColumnAdd?.(column);
+        if (processedColumn === false) {
+            throw new Error('Column addition cancelled by lifecycle hook');
+        }
+
+        const columnToAdd = processedColumn || column;
+
+        try {
+            // Call adapter
+            const newColumn = await this.adapter.addColumn(columnToAdd);
+
+            // Update model
+            this.model.addColumn(newColumn);
+
+            // After hook
+            this.lifecycle.onColumnAdd?.(newColumn);
+
+            return newColumn;
+        } catch (error) {
+            this.lifecycle.onError?.({
+                type: 'column:add',
+                message: (error as Error).message,
+                timestamp: Date.now(),
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Delete a column
+     */
+    async deleteColumn(columnId: string): Promise<void> {
+        if (!this.adapter) {
+            throw new Error('Adapter not initialized. Use config-based constructor.');
+        }
+
+        // Before hook
+        const shouldDelete = this.lifecycle.onBeforeColumnDelete?.(columnId);
+        if (shouldDelete === false) {
+            return; // Cancelled
+        }
+
+        try {
+            // Call adapter
+            await this.adapter.deleteColumn(columnId);
+
+            // Update model
+            this.model.deleteColumn(columnId);
+
+            // After hook
+            this.lifecycle.onColumnDelete?.(columnId);
+        } catch (error) {
+            this.lifecycle.onError?.({
+                type: 'column:delete',
+                message: (error as Error).message,
+                timestamp: Date.now(),
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Select a whole column
+     */
+    selectColumn(columnId: string, multiSelect: boolean = false, rangeSelect: boolean = false) {
+        const colIndex = this.model.getColumns().findIndex(c => c.id === columnId);
+        if (colIndex === -1) return;
+
+        const rowCount = this.model.getRowCount();
+        if (rowCount === 0) return;
+
+        const currentSelection = this.store.getState().selection;
+
+        // 1. Handle Range Select (Shift + Click)
+        if (rangeSelect && currentSelection?.primary) {
+            const anchorCol = currentSelection.primary.col;
+            
+            // Create range from anchor column to new column
+            this.store.setState({
+                selection: {
+                    primary: currentSelection.primary, // Keep same primary focus
+                    ranges: [{
+                        start: { col: Math.min(anchorCol, colIndex), row: 0 },
+                        end: { col: Math.max(anchorCol, colIndex), row: rowCount - 1 }
+                    }]
+                }
+            });
+            return;
+        }
+
+        // 2. Handle Multi Select (Cmd/Ctrl + Click)
+        if (multiSelect && currentSelection) {
+            // Add new range
+            const newRange = {
+                start: { col: colIndex, row: 0 },
+                end: { col: colIndex, row: rowCount - 1 }
+            };
+            
+            // Check if already selected to toggle off
+            const isAlreadySelected = currentSelection.ranges.some(r => 
+                r.start.col === colIndex && r.end.col === colIndex && 
+                r.start.row === 0 && r.end.row === rowCount - 1
+            );
+
+            if (isAlreadySelected) {
+                // Remove this range
+                const newRanges = currentSelection.ranges.filter(r => 
+                    !(r.start.col === colIndex && r.end.col === colIndex)
+                );
+                
+                if (newRanges.length === 0) {
+                    this.store.setState({ selection: null });
+                } else {
+                    this.store.setState({
+                        selection: {
+                            primary: currentSelection.primary, // Keep primary
+                            ranges: newRanges
+                        }
+                    });
+                }
+            } else {
+                // Add range
+                this.store.setState({
+                    selection: {
+                        primary: { col: colIndex, row: 0 },
+                        ranges: [...currentSelection.ranges, newRange]
+                    }
+                });
+            }
+            return;
+        }
+
+        // 3. Default: Single Select with Toggle
+        // Check if this specific column is already the ONLY selection
+        const isSingleColumnSelected = currentSelection?.ranges.length === 1 &&
+            currentSelection.ranges[0].start.col === colIndex &&
+            currentSelection.ranges[0].end.col === colIndex &&
+            currentSelection.ranges[0].start.row === 0 &&
+            currentSelection.ranges[0].end.row === rowCount - 1;
+
+        if (isSingleColumnSelected) {
+            // Toggle off
+            this.store.setState({ selection: null });
+        } else {
+            // Select
+            this.store.setState({
+                selection: {
+                    primary: { col: colIndex, row: 0 },
+                    ranges: [{
+                        start: { col: colIndex, row: 0 },
+                        end: { col: colIndex, row: rowCount - 1 }
+                    }]
+                }
+            });
+        }
+    }
+
+    /**
+     * Get adapter (for testing/debugging)
+     */
+    public getAdapter(): DataAdapter | null {
+        return this.adapter;
+    }
+
+    /**
+     * Get config (for testing/debugging)
+     */
+    public getConfig(): GridConfig | null {
+        return this.config;
     }
 }

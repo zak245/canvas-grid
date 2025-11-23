@@ -3,6 +3,7 @@ import { Search, Filter, ArrowUpDown, Plus, Download, Sparkles } from 'lucide-re
 
 interface ToolbarProps {
     onAddColumn: () => void;
+    onAddRow?: () => void; // Kept in interface for compatibility but removed from UI
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({ onAddColumn }) => {

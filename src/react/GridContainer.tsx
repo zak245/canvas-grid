@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useGridEngine } from './useGridEngine';
-import { GridColumn, GridRow } from '../types/grid';
+import type { GridColumn, GridRow } from '../types/grid';
+import type { GridConfig } from '../config/GridConfig';
+import type { ColumnSort } from '../types/platform';
 import { ColumnHeaders } from '../components/ColumnHeaders';
 import { RowHeaders } from '../components/RowHeaders';
 
@@ -8,19 +10,49 @@ interface GridContainerProps {
     columns?: GridColumn[];
     rows?: GridRow[];
     onColumnsUpdate?: (columns: GridColumn[]) => void;
+    config?: Partial<GridConfig>;  // NEW: Optional config
 }
 
 export const GridContainer: React.FC<GridContainerProps> = ({
     columns = [],
     rows = [],
-    onColumnsUpdate
+    onColumnsUpdate,
+    config  // NEW
 }) => {
-    const { canvasRef, engine } = useGridEngine();
+    const { canvasRef, engine } = useGridEngine(config);  // NEW: Pass config
     const [scrollState, setScrollState] = useState({ scrollLeft: 0, scrollTop: 0 });
     const [visibleRowIndices, setVisibleRowIndices] = useState<number[]>([]);
+    
+    // Get columns/rows from engine.model when using config, otherwise from props
+    const effectiveColumns = config ? engine.model.getColumns() : columns;
+    const effectiveRows = config ? engine.model.getAllRows() : rows;
+    const [dataVersion, setDataVersion] = useState(0); // Force re-render on data change
+    const [sortState, setSortState] = useState<ColumnSort[]>([]); // Local state for sort UI
 
-    // Sync props to engine
+    // Subscribe to data changes when using config
     useEffect(() => {
+        if (!config) return;
+
+        const unsubscribeData = engine.subscribeToDataChange(() => {
+            setDataVersion(v => v + 1);
+        });
+        
+        const unsubscribeSort = engine.subscribeToSortChange((sort) => {
+            setSortState(sort);
+        });
+
+        return () => {
+            unsubscribeData();
+            unsubscribeSort();
+        };
+    }, [engine, config]);
+
+    // Sync props to engine (only if not using config mode)
+    useEffect(() => {
+        // Skip if engine is using config (adapter handles data loading)
+        if (config) return;
+        
+        // Legacy mode: manually sync columns/rows
         if (columns.length > 0) {
             engine.model.setColumns(columns);
 
@@ -50,7 +82,7 @@ export const GridContainer: React.FC<GridContainerProps> = ({
         if (rows.length > 0) {
             engine.model.setRows(rows);
         }
-    }, [engine, columns, rows]);
+    }, [engine, columns, rows, config]);
 
     // Subscribe to viewport changes for header sync
     useEffect(() => {
@@ -74,7 +106,7 @@ export const GridContainer: React.FC<GridContainerProps> = ({
         }, 16); // ~60fps
 
         return () => clearInterval(interval);
-    }, [engine]);
+    }, [engine, dataVersion]); // Add dataVersion dep
 
     // Handle wheel events for scrolling
     useEffect(() => {
@@ -86,8 +118,8 @@ export const GridContainer: React.FC<GridContainerProps> = ({
             const deltaY = e.deltaY;
 
             // Calculate total grid dimensions
-            const totalWidth = columns.reduce((sum, col) => sum + col.width, 0);
-            const totalHeight = rows.length * engine.theme.rowHeight;
+            const totalWidth = effectiveColumns.reduce((sum, col) => sum + col.width, 0);
+            const totalHeight = effectiveRows.length * engine.theme.rowHeight;
             const viewportState = engine.viewport.getState();
 
             // Clamp scroll values
@@ -107,7 +139,7 @@ export const GridContainer: React.FC<GridContainerProps> = ({
                 canvas.removeEventListener('wheel', handleWheel);
             }
         };
-    }, [engine, canvasRef, columns, rows]);
+    }, [engine, canvasRef, effectiveColumns, effectiveRows]);
 
     return (
         <div className="w-full h-full relative overflow-hidden bg-white">
@@ -123,9 +155,12 @@ export const GridContainer: React.FC<GridContainerProps> = ({
             {/* Column Headers */}
             <div className="absolute top-0 left-0 right-0 z-10">
                 <ColumnHeaders
-                    columns={columns}
+                    columns={effectiveColumns}
                     scrollLeft={scrollState.scrollLeft}
                     rowHeaderWidth={engine.theme.rowHeaderWidth}
+                    sortState={sortState}
+                    onSort={(colId, direction) => engine.sort(colId, direction)}
+                    onSelectColumn={(colId, multi, range) => engine.selectColumn(colId, multi, range)}
                 />
             </div>
 

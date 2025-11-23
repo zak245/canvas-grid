@@ -1,0 +1,112 @@
+import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { ArrowUp, ArrowDown, Trash, EyeOff, Pin } from 'lucide-react';
+
+export interface ColumnMenuProps {
+    isOpen: boolean;
+    x: number;
+    y: number;
+    columnId: string;
+    onClose: () => void;
+    onAction: (action: string, columnId: string) => void;
+}
+
+export const ColumnMenu: React.FC<ColumnMenuProps> = ({
+    isOpen,
+    x,
+    y,
+    columnId,
+    onClose,
+    onAction
+}) => {
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    // Close on click outside
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const handleClickOutside = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                onClose();
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [isOpen, onClose]);
+
+    if (!isOpen) return null;
+
+    // Render via portal to avoid z-index issues
+    return createPortal(
+        <div
+            ref={menuRef}
+            className="fixed z-[9999] bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[180px] animate-in fade-in zoom-in-95 duration-100"
+            style={{ top: y, left: x }}
+        >
+            <div className="px-3 py-2 text-xs font-semibold text-gray-500 border-b border-gray-100 mb-1">
+                Column Actions
+            </div>
+            
+            <MenuItem 
+                icon={<ArrowUp size={14} />} 
+                label="Sort Ascending" 
+                onClick={() => onAction('sortAsc', columnId)} 
+            />
+            <MenuItem 
+                icon={<ArrowDown size={14} />} 
+                label="Sort Descending" 
+                onClick={() => onAction('sortDesc', columnId)} 
+            />
+            
+            <div className="h-px bg-gray-100 my-1" />
+            
+            <MenuItem 
+                icon={<EyeOff size={14} />} 
+                label="Hide Column" 
+                onClick={() => onAction('hide', columnId)}
+                disabled // Future
+            />
+            <MenuItem 
+                icon={<Pin size={14} />} 
+                label="Pin Column" 
+                onClick={() => onAction('pin', columnId)}
+                disabled // Future
+            />
+            
+            <div className="h-px bg-gray-100 my-1" />
+            
+            <MenuItem 
+                icon={<Trash size={14} />} 
+                label="Delete Column" 
+                onClick={() => onAction('delete', columnId)}
+                danger
+                disabled // Future
+            />
+        </div>,
+        document.body
+    );
+};
+
+interface MenuItemProps {
+    icon: React.ReactNode;
+    label: string;
+    onClick: () => void;
+    danger?: boolean;
+    disabled?: boolean;
+}
+
+const MenuItem: React.FC<MenuItemProps> = ({ icon, label, onClick, danger, disabled }) => (
+    <button
+        onClick={onClick}
+        disabled={disabled}
+        className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors
+            ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}
+            ${danger ? 'text-red-600 hover:bg-red-50' : 'text-gray-700'}
+        `}
+    >
+        <span className="text-gray-400">{icon}</span>
+        <span>{label}</span>
+    </button>
+);
+

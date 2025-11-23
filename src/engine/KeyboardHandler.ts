@@ -80,18 +80,6 @@ export class KeyboardHandler {
             newRow = Math.min(rowCount - 1, row + rowsPerPage);
             shouldPreventDefault = true;
         }
-        // Copy/Paste/Cut
-        else if ((e.metaKey || e.ctrlKey) && e.key === 'c') {
-            this.handleCopy();
-            shouldPreventDefault = true;
-        } else if ((e.metaKey || e.ctrlKey) && e.key === 'v') {
-            // Paste is async, don't await to avoid blocking
-            this.handlePaste().catch(err => console.error('Paste error:', err));
-            shouldPreventDefault = true;
-        } else if ((e.metaKey || e.ctrlKey) && e.key === 'x') {
-            this.handleCut();
-            shouldPreventDefault = true;
-        }
         // Select All
         else if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
             this.selectAll();
@@ -216,116 +204,181 @@ export class KeyboardHandler {
         }
     }
 
-    private handleCopy() {
+    onCopy(e: ClipboardEvent) {
         const selection = this.engine.store.getState().selection;
         if (!selection || selection.ranges.length === 0) return;
 
-        const range = selection.ranges[0];
+        // Prevent default browser copy (which would copy the focused UI element)
+        e.preventDefault();
+
         const rows = this.engine.model.getAllRows();
         const columns = this.engine.model.getColumns();
+        const rowCount = this.engine.model.getRowCount();
 
+        // 1. Determine bounding box
+        let minRow = Infinity, maxRow = -Infinity;
+        let minCol = Infinity, maxCol = -Infinity;
+        const selectedCells = new Set<string>();
+
+        for (const range of selection.ranges) {
+            minRow = Math.min(minRow, range.start.row);
+            maxRow = Math.max(maxRow, range.end.row);
+            minCol = Math.min(minCol, range.start.col);
+            maxCol = Math.max(maxCol, range.end.col);
+
+            for (let r = range.start.row; r <= range.end.row; r++) {
+                for (let c = range.start.col; c <= range.end.col; c++) {
+                    selectedCells.add(`${r}:${c}`);
+                }
+            }
+        }
+
+        if (minRow === Infinity) return;
+
+        // Check for large copy
+        const totalRowsToCopy = maxRow - minRow + 1;
+        if (totalRowsToCopy > 1000) {
+            // Note: window.confirm blocks execution, which is allowed in event handlers
+            const proceed = window.confirm(`You are about to copy ${totalRowsToCopy} rows. This might take a moment. Do you want to proceed?`);
+            if (!proceed) return;
+        }
+
+        // 2. Build TSV content
         let tsvContent = '';
-        for (let r = range.start.row; r <= range.end.row; r++) {
-            const row = rows[r];
-            if (!row) continue;
 
+        // Check if full column selection (include headers)
+        const isFullColumnSelection = minRow === 0 && maxRow === rowCount - 1;
+
+        if (isFullColumnSelection) {
+            const headerRow: string[] = [];
+            for (let c = minCol; c <= maxCol; c++) {
+                if (selectedCells.has(`${minRow}:${c}`)) { // Check against first row of selection
+                    const col = columns[c];
+                    let title = col.title || '';
+                    if (title.includes('\t') || title.includes('\n')) {
+                        title = `"${title.replace(/"/g, '""')}"`;
+                    }
+                    headerRow.push(title);
+                } else {
+                    headerRow.push('');
+                }
+            }
+            tsvContent += headerRow.join('\t') + '\n';
+        }
+        
+        for (let r = minRow; r <= maxRow; r++) {
             const rowData: string[] = [];
-            for (let c = range.start.col; c <= range.end.col; c++) {
-                const col = columns[c];
-                const cell = row.cells.get(col.id);
-                rowData.push(cell?.value?.toString() || '');
+            const row = rows[r];
+
+            for (let c = minCol; c <= maxCol; c++) {
+                if (selectedCells.has(`${r}:${c}`)) {
+                    const col = columns[c];
+                    const cell = row?.cells.get(col.id);
+                    let value = cell?.value?.toString() || '';
+                    if (value.includes('\t') || value.includes('\n')) {
+                        value = `"${value.replace(/"/g, '""')}"`;
+                    }
+                    rowData.push(value);
+                } else {
+                    rowData.push('');
+                }
             }
             tsvContent += rowData.join('\t') + '\n';
         }
 
-        navigator.clipboard.writeText(tsvContent).catch(err => {
-            console.error('Failed to copy:', err);
-        });
-
-        console.log('Copied to clipboard');
+        // 3. Write to clipboard event data
+        e.clipboardData?.setData('text/plain', tsvContent);
+        console.log(`Copied ${maxRow - minRow + 1} rows × ${maxCol - minCol + 1} cols`);
     }
 
-    private async handlePaste() {
+    onCut(e: ClipboardEvent) {
+        this.onCopy(e);
+        this.clearSelectedCells();
+    }
+
+    async onPaste(e: ClipboardEvent) {
         const selection = this.engine.store.getState().selection;
         if (!selection || !selection.primary) return;
 
+        // Prevent default paste
+        e.preventDefault();
+
         try {
-            // Read from clipboard
-            const text = await navigator.clipboard.readText();
+            // Read from clipboard event data
+            const text = e.clipboardData?.getData('text/plain');
             if (!text) return;
 
-            // Parse TSV data (tab-separated, newline-separated)
-            const rows = text.split('\n').filter(row => row.length > 0);
-            const data: string[][] = rows.map(row => row.split('\t'));
-
-            if (data.length === 0) return;
-
-            const pasteRows = data.length;
-            const pasteCols = Math.max(...data.map(row => row.length));
-
-            const { primary } = selection;
-            const columns = this.engine.model.getColumns();
-            const totalRows = this.engine.model.getRowCount();
-
-            // Determine paste mode:
-            // 1. Single cell paste: paste data starting from primary cell
-            // 2. Range paste: if selection range matches paste size, map 1:1
-            // 3. Overflow: paste extends beyond selection
-
-            const range = selection.ranges[0];
-            const selectionRows = range.end.row - range.start.row + 1;
-            const selectionCols = range.end.col - range.start.col + 1;
-
-            let startRow = primary.row;
-            let startCol = primary.col;
-
-            // If selection is bigger than 1 cell, start from selection start
-            if (selectionRows > 1 || selectionCols > 1) {
-                startRow = range.start.row;
-                startCol = range.start.col;
-            }
-
-            // Apply paste data (validation happens automatically in setCellValue)
-            for (let r = 0; r < pasteRows; r++) {
-                const targetRow = startRow + r;
-                if (targetRow >= totalRows) break;
-
-                const rowData = data[r];
-                for (let c = 0; c < rowData.length; c++) {
-                    const targetCol = startCol + c;
-                    if (targetCol >= columns.length) break;
-
-                    const pastedValue = rowData[c];
-                    const column = columns[targetCol];
-
-                    // Set cell value - validation happens automatically in model
-                    this.engine.model.setCellValue(targetRow, column.id, pastedValue);
-                }
-            }
-
-            // Update selection to cover pasted area
-            const newEndRow = Math.min(startRow + pasteRows - 1, totalRows - 1);
-            const newEndCol = Math.min(startCol + pasteCols - 1, columns.length - 1);
-
-            this.engine.store.setState({
-                selection: {
-                    primary: { row: startRow, col: startCol },
-                    ranges: [
-                        { start: { row: startRow, col: startCol }, end: { row: newEndRow, col: newEndCol } }
-                    ]
-                }
-            });
-
-            console.log(`Pasted ${pasteRows} rows × ${pasteCols} cols`);
+            await this.processPasteData(text);
         } catch (err) {
             console.error('Failed to paste:', err);
         }
     }
 
-    private handleCut() {
-        this.handleCopy();
-        this.clearSelectedCells();
+    private async processPasteData(text: string) {
+        // Parse TSV data
+        const rows = text.split('\n').filter(row => row.length > 0);
+        const data: string[][] = rows.map(row => row.split('\t'));
+
+        if (data.length === 0) return;
+
+        const pasteRows = data.length;
+        const pasteCols = Math.max(...data.map(row => row.length));
+
+        const selection = this.engine.store.getState().selection!;
+        const { primary } = selection;
+        const columns = this.engine.model.getColumns();
+        const totalRows = this.engine.model.getRowCount();
+
+        const range = selection.ranges[0];
+        const selectionRows = range.end.row - range.start.row + 1;
+        const selectionCols = range.end.col - range.start.col + 1;
+
+        let startRow = primary.row;
+        let startCol = primary.col;
+
+        // If selection is bigger than 1 cell, start from selection start
+        if (selectionRows > 1 || selectionCols > 1) {
+            startRow = range.start.row;
+            startCol = range.start.col;
+        }
+
+        // Apply paste data
+        for (let r = 0; r < pasteRows; r++) {
+            const targetRow = startRow + r;
+            if (targetRow >= totalRows) break;
+
+            const rowData = data[r];
+            for (let c = 0; c < rowData.length; c++) {
+                const targetCol = startCol + c;
+                if (targetCol >= columns.length) break;
+
+                const pastedValue = rowData[c];
+                const column = columns[targetCol];
+
+                this.engine.model.setCellValue(targetRow, column.id, pastedValue);
+            }
+        }
+
+        // Update selection
+        const newEndRow = Math.min(startRow + pasteRows - 1, totalRows - 1);
+        const newEndCol = Math.min(startCol + pasteCols - 1, columns.length - 1);
+
+        this.engine.store.setState({
+            selection: {
+                primary: { row: startRow, col: startCol },
+                ranges: [
+                    { start: { row: startRow, col: startCol }, end: { row: newEndRow, col: newEndCol } }
+                ]
+            }
+        });
+
+        console.log(`Pasted ${pasteRows} rows × ${pasteCols} cols`);
     }
+
+    // Deprecated private methods (removed/replaced)
+    // private handleCopy() { ... }
+    // private handlePaste() { ... }
+    // private handleCut() { ... }
 
     private selectAll() {
         const rowCount = this.engine.model.getRowCount();

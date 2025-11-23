@@ -1,4 +1,6 @@
 import type { GridColumn, GridRow, CellValue } from '../types/grid';
+import type { DataAdapter } from '../adapters/DataAdapter';
+import type { ColumnSort } from '../types/platform';
 import { CellFormatter } from '../utils/CellFormatter';
 import { TypeValidator } from '../utils/TypeValidator';
 
@@ -6,6 +8,19 @@ export class GridModel {
     private columns: GridColumn[] = [];
     private rows: Map<string, GridRow> = new Map();
     private rowOrder: string[] = [];
+    
+    // NEW: Sort state
+    private sortState: ColumnSort[] = [];
+    
+    // NEW: Optional adapter reference
+    private adapter: DataAdapter | null = null;
+    
+    // Constructor with optional adapter
+    constructor(adapter?: DataAdapter) {
+        if (adapter) {
+            this.adapter = adapter;
+        }
+    }
 
     // --- Column Management ---
     setColumns(columns: GridColumn[]): void {
@@ -133,5 +148,79 @@ export class GridModel {
                 this.setCellValue(r, colId, value);
             }
         }
+    }
+    
+    // ===== NEW: ROW OPERATIONS =====
+    
+    /**
+     * Add a row to the model
+     * Note: This is called AFTER adapter has created the row
+     */
+    addRow(row: GridRow): void {
+        this.rows.set(row.id, row);
+        this.rowOrder.push(row.id);
+    }
+    
+    /**
+     * Update a row in the model
+     * Note: This is called AFTER adapter has updated the row
+     */
+    updateRow(row: GridRow): void {
+        this.rows.set(row.id, row);
+    }
+    
+    /**
+     * Delete a row from the model
+     * Note: This is called AFTER adapter has deleted the row
+     */
+    deleteRow(rowId: string): void {
+        this.rows.delete(rowId);
+        this.rowOrder = this.rowOrder.filter(id => id !== rowId);
+    }
+    
+    // ===== NEW: COLUMN OPERATIONS =====
+    
+    /**
+     * Add a column to the model
+     * Note: This is called AFTER adapter has created the column
+     */
+    addColumn(column: GridColumn): void {
+        this.columns.push(column);
+    }
+    
+    /**
+     * Update a column in the model
+     * Note: This is called AFTER adapter has updated the column
+     */
+    updateColumn(columnId: string, changes: Partial<GridColumn>): void {
+        const column = this.getColumnById(columnId);
+        if (column) {
+            Object.assign(column, changes);
+        }
+    }
+    
+    /**
+     * Delete a column from the model
+     * Note: This is called AFTER adapter has deleted the column
+     */
+    deleteColumn(columnId: string): void {
+        this.columns = this.columns.filter(c => c.id !== columnId);
+        // Note: Adapter should handle removing cells
+    }
+    
+    // ===== NEW: SORT STATE =====
+    
+    /**
+     * Get current sort state
+     */
+    getSortState(): ColumnSort[] {
+        return this.sortState;
+    }
+    
+    /**
+     * Set sort state
+     */
+    setSortState(sortState: ColumnSort[]): void {
+        this.sortState = sortState;
     }
 }

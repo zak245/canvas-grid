@@ -21,8 +21,14 @@ export class InputController {
         canvas.addEventListener('mousemove', this.mouseHandler.handleMouseMove);
         canvas.addEventListener('mouseup', this.mouseHandler.handleMouseUp);
 
-        // Keyboard events
+        // Keyboard events (Canvas focus)
         canvas.addEventListener('keydown', this.keyboardHandler.handleKeyDown);
+
+        // Clipboard events (Global)
+        // We listen globally because clicking headers removes focus from canvas
+        document.addEventListener('copy', this.handleCopy);
+        document.addEventListener('cut', this.handleCut);
+        document.addEventListener('paste', this.handlePaste);
 
         // Make canvas focusable
         canvas.tabIndex = 0;
@@ -34,5 +40,21 @@ export class InputController {
         canvas.removeEventListener('mousemove', this.mouseHandler.handleMouseMove);
         canvas.removeEventListener('mouseup', this.mouseHandler.handleMouseUp);
         canvas.removeEventListener('keydown', this.keyboardHandler.handleKeyDown);
+
+        document.removeEventListener('copy', this.handleCopy);
+        document.removeEventListener('cut', this.handleCut);
+        document.removeEventListener('paste', this.handlePaste);
     }
+
+    private handleCopy = (e: ClipboardEvent) => {
+        this.keyboardHandler.onCopy(e);
+    };
+
+    private handleCut = (e: ClipboardEvent) => {
+        this.keyboardHandler.onCut(e);
+    };
+
+    private handlePaste = (e: ClipboardEvent) => {
+        this.keyboardHandler.onPaste(e);
+    };
 }

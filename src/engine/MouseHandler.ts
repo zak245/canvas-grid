@@ -8,6 +8,21 @@ export class MouseHandler {
     constructor(private engine: GridEngine) { }
 
     handleMouseDown = (e: MouseEvent) => {
+        const { theme } = this.engine;
+        const { scrollTop, scrollLeft } = this.engine.viewport.getState();
+        
+        // Check for "Add Row" button click
+        // Convert to grid coordinates
+        const gridY = (e.offsetY - theme.headerHeight) + scrollTop;
+        const totalRows = this.engine.model.getRowCount();
+        const addRowY = totalRows * theme.rowHeight;
+        
+        if (gridY >= addRowY && gridY < addRowY + theme.rowHeight) {
+            // Clicked on "Add Row"
+            this.engine.addRow({ cells: new Map() });
+            return;
+        }
+
         const cell = this.getCellAt(e.offsetX, e.offsetY);
         if (!cell) return;
 
