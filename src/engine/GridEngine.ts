@@ -116,6 +116,8 @@ export class GridEngine {
             activeAddColumnMenu: null,
             editingHeader: null,
             activeColumnSettings: null,
+            activeRowDetail: null,
+            activeEnrichment: null,
         }));
 
         // Call initialization hook
@@ -147,6 +149,8 @@ export class GridEngine {
             activeAddColumnMenu: null,
             editingHeader: null,
             activeColumnSettings: null,
+            activeRowDetail: null,
+            activeEnrichment: null,
         }));
     }
 
@@ -253,7 +257,7 @@ export class GridEngine {
         return {
             headerHeight: 40,
             rowHeight: 32,
-            rowHeaderWidth: 70,
+            rowHeaderWidth: 90,
             borderColor: '#e5e7eb',
             gridLineColor: 'rgba(0, 0, 0, 0.05)',
             headerBackgroundColor: '#f9fafb',
@@ -1149,10 +1153,30 @@ export class GridEngine {
             if (row) {
                 this.deleteRow(row.id);
             }
+        } else if (action === 'detail') {
+            this.openRowDetail(rowIndex);
+        } else if (action === 'enrich') {
+            this.openEnrichment(rowIndex);
         }
         if (this.lifecycle.onRowAction) {
             this.lifecycle.onRowAction(rowIndex, action);
         }
+    }
+
+    openRowDetail(rowIndex: number) {
+        this.store.setState({ activeRowDetail: rowIndex });
+    }
+    
+    closeRowDetail() {
+        this.store.setState({ activeRowDetail: null });
+    }
+
+    openEnrichment(rowIndex: number) {
+        this.store.setState({ activeEnrichment: rowIndex });
+    }
+
+    closeEnrichment() {
+        this.store.setState({ activeEnrichment: null });
     }
 
     /**

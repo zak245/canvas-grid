@@ -31,10 +31,14 @@ export class MouseHandler {
             const rowCount = this.engine.model.getRowCount();
             
             if (rowIndex >= 0 && rowIndex < rowCount) {
-                 const actionX = theme.rowHeaderWidth - 18;
-                 // Check for Action Button click
-                 if (e.offsetX >= actionX - 5 && e.offsetX <= actionX + 19) {
-                     this.engine.triggerRowAction(rowIndex, 'delete');
+                 const enrichX = theme.rowHeaderWidth - 34;
+                 const detailX = theme.rowHeaderWidth - 16;
+                 
+                 // Check Action Buttons
+                 if (e.offsetX >= enrichX - 8 && e.offsetX <= enrichX + 8) {
+                     this.engine.triggerRowAction(rowIndex, 'enrich');
+                 } else if (e.offsetX >= detailX - 8 && e.offsetX <= detailX + 8) {
+                     this.engine.triggerRowAction(rowIndex, 'detail');
                  } else {
                      // Start Row Selection Drag
                      this.isSelectingRows = true;
@@ -198,8 +202,11 @@ export class MouseHandler {
 
         // 3. Handle Cursor Styling
         if (e.offsetX < theme.rowHeaderWidth && e.offsetY > theme.headerHeight) {
-             const actionX = theme.rowHeaderWidth - 18;
-             if (e.offsetX >= actionX - 5 && e.offsetX <= actionX + 19) {
+             const enrichX = theme.rowHeaderWidth - 34;
+             const detailX = theme.rowHeaderWidth - 16;
+             
+             if ((e.offsetX >= enrichX - 8 && e.offsetX <= enrichX + 8) || 
+                 (e.offsetX >= detailX - 8 && e.offsetX <= detailX + 8)) {
                  canvas.style.cursor = 'pointer';
              } else {
                  canvas.style.cursor = 'default';

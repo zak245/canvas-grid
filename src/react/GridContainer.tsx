@@ -10,6 +10,8 @@ import { AddColumnMenu } from '../components/AddColumnMenu';
 import { ColumnSettingsDrawer } from '../components/ColumnSettingsDrawer';
 import { HeaderRenameInput } from '../components/HeaderRenameInput';
 import { CellEditorOverlay } from '../components/CellEditorOverlay';
+import { RowDetailDrawer } from '../components/overlays/RowDetailDrawer';
+import { EnrichmentModal } from '../components/overlays/EnrichmentModal';
 
 interface GridContainerProps {
     engine?: GridEngine;
@@ -29,7 +31,6 @@ export const GridContainer: React.FC<GridContainerProps> = ({
 }) => {
     const { canvasRef, engine } = useGridEngine(externalEngine || config);
     const containerRef = React.useRef<HTMLDivElement>(null);
-    const [scrollState, setScrollState] = useState({ scrollLeft: 0, scrollTop: 0 });
     
     // Subscribe to store for UI state (Single Source of Truth)
     const activeHeaderMenu = useStore(engine.store, (state) => state.activeHeaderMenu);
@@ -37,6 +38,8 @@ export const GridContainer: React.FC<GridContainerProps> = ({
     const editingHeader = useStore(engine.store, (state) => state.editingHeader);
     const activeColumnSettings = useStore(engine.store, (state) => state.activeColumnSettings);
     const editingCell = useStore(engine.store, (state) => state.editingCell);
+    const activeRowDetail = useStore(engine.store, (state) => state.activeRowDetail);
+    const activeEnrichment = useStore(engine.store, (state) => state.activeEnrichment);
     
     const effectiveColumns = config ? engine.model.getVisibleColumns() : columns;
     const allColumns = config ? engine.model.getColumns() : columns;
@@ -52,14 +55,14 @@ export const GridContainer: React.FC<GridContainerProps> = ({
         });
         
         const unsubscribeSort = engine.subscribeToSortChange(() => {
-            // No-op, just trigger re-render via dataVersion if needed
+            setDataVersion(v => v + 1); // Trigger re-render on sort change
         });
 
         return () => {
             unsubscribeData();
             unsubscribeSort();
         };
-    }, [engine, config]);
+    }, [engine, config, dataVersion]);
 
     // Sync props to engine (legacy mode)
     useEffect(() => {
@@ -87,18 +90,6 @@ export const GridContainer: React.FC<GridContainerProps> = ({
         }
         if (rows.length > 0) engine.model.setRows(rows);
     }, [engine, columns, rows, config]);
-
-    // Viewport sync
-    useEffect(() => {
-        const interval = setInterval(() => {
-            const viewportState = engine.viewport.getState();
-            setScrollState({
-                scrollLeft: viewportState.scrollLeft,
-                scrollTop: viewportState.scrollTop
-            });
-        }, 16);
-        return () => clearInterval(interval);
-    }, [engine, dataVersion]);
 
     // Scroll handler
     useEffect(() => {
@@ -243,6 +234,21 @@ export const GridContainer: React.FC<GridContainerProps> = ({
             })()}
 
             <CellEditorOverlay engine={engine} containerRef={containerRef} />
+
+            {activeRowDetail !== null && (
+                <RowDetailDrawer
+                    engine={engine}
+                    rowIndex={activeRowDetail}
+                    onClose={() => engine.closeRowDetail()}
+                />
+            )}
+
+            {activeEnrichment !== null && (
+                <EnrichmentModal
+                    rowIndex={activeEnrichment}
+                    onClose={() => engine.closeEnrichment()}
+                />
+            )}
         </div>
     );
 };

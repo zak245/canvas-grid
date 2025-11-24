@@ -9,18 +9,43 @@ export interface CompanyEntity {
 }
 
 export const generateCompanyPool = (count: number = 50): CompanyEntity[] => {
-    const companies = ['Acme Corp', 'TechStart Inc', 'Global Solutions', 'Innovate Labs', 'CloudScale', 'DataDrive', 'NextGen Systems', 'Synergy Partners', 'Apex Industries', 'FutureTech', 'Quantum Dynamics'];
+    // Real companies for better logos
+    const companies = [
+        { name: 'Google', domain: 'google.com' },
+        { name: 'Apple', domain: 'apple.com' },
+        { name: 'Microsoft', domain: 'microsoft.com' },
+        { name: 'Amazon', domain: 'amazon.com' },
+        { name: 'Meta', domain: 'meta.com' },
+        { name: 'Netflix', domain: 'netflix.com' },
+        { name: 'Tesla', domain: 'tesla.com' },
+        { name: 'Spotify', domain: 'spotify.com' },
+        { name: 'Airbnb', domain: 'airbnb.com' },
+        { name: 'Uber', domain: 'uber.com' },
+        { name: 'Lyft', domain: 'lyft.com' },
+        { name: 'Slack', domain: 'slack.com' },
+        { name: 'Stripe', domain: 'stripe.com' },
+        { name: 'Twilio', domain: 'twilio.com' },
+        { name: 'Zoom', domain: 'zoom.us' },
+        { name: 'Salesforce', domain: 'salesforce.com' },
+        { name: 'Intel', domain: 'intel.com' },
+        { name: 'Nvidia', domain: 'nvidia.com' },
+        { name: 'AMD', domain: 'amd.com' },
+        { name: 'Shopify', domain: 'shopify.com' },
+        { name: 'Dropbox', domain: 'dropbox.com' },
+        { name: 'Box', domain: 'box.com' },
+        { name: 'Asana', domain: 'asana.com' },
+        { name: 'Atlassian', domain: 'atlassian.com' },
+        { name: 'GitHub', domain: 'github.com' }
+    ];
     
     return Array.from({ length: count }, (_, i) => {
-        const baseName = companies[i % companies.length];
-        const suffix = Math.floor(i / companies.length) + 1;
-        const name = `${baseName} ${suffix}`;
+        const comp = companies[i % companies.length];
         return {
             id: `comp_ref_${i}`,
-            name: name,
-            domain: `${baseName.toLowerCase().replace(/\s/g, '')}.com`,
-            logo: `https://logo.clearbit.com/${baseName.toLowerCase().replace(/\s/g, '')}.com`,
-            employees: Math.floor(Math.random() * 10000) + 10
+            name: comp.name,
+            domain: comp.domain,
+            logo: `https://logo.clearbit.com/${comp.domain}`,
+            employees: Math.floor(Math.random() * 50000) + 100
         };
     });
 };
@@ -95,7 +120,6 @@ export function generateMockData(
     // Sample data pools
     const firstNames = ['John', 'Sarah', 'Michael', 'Emma', 'David', 'Lisa', 'James', 'Emily', 'Robert', 'Jennifer', 'William', 'Jessica', 'Richard', 'Amanda', 'Daniel', 'Melissa', 'Thomas', 'Elizabeth'];
     const lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson', 'Thomas'];
-    const companies = ['Acme Corp', 'TechStart Inc', 'Global Solutions', 'Innovate Labs', 'CloudScale', 'DataDrive', 'NextGen Systems', 'Synergy Partners', 'Apex Industries', 'FutureTech', 'Quantum Dynamics'];
     const titles = ['CEO', 'CTO', 'VP Sales', 'VP Marketing', 'Director of Engineering', 'Head of Product', 'Senior Software Engineer', 'Product Manager', 'Sales Manager', 'Marketing Director', 'Account Executive'];
     const cities = ['San Francisco', 'New York', 'Austin', 'Seattle', 'Boston', 'Chicago', 'Los Angeles', 'Denver', 'Atlanta', 'Miami'];
     const states = ['CA', 'NY', 'TX', 'WA', 'MA', 'IL', 'CO', 'GA', 'FL'];
@@ -121,7 +145,9 @@ export function generateMockData(
         
         // Select Linked Record from Pool
         const companyObj = companyPool[i % companyPool.length];
-        const company = companies[i % companies.length]; // Keep for legacy references
+        // Use companyObj properties for related columns to ensure consistency
+        const companyName = companyObj.name;
+        const companyDomain = companyObj.domain;
 
         const city = cities[i % cities.length];
         const state = states[i % states.length];
@@ -132,20 +158,20 @@ export function generateMockData(
                 ['firstName', { value: `${firstName}_${Math.floor(i / firstNames.length)}` }],
                 ['lastName', { value: `${lastName}_${Math.floor(i / lastNames.length)}` }],
                 ['email', { value: `${firstName.toLowerCase()}.${lastName.toLowerCase()}${i}@example.com` }],
-                ['company', { value: JSON.stringify(companyObj) }],
+                ['company', { value: companyObj }], // Passes full object
                 ['title', { value: titles[i % titles.length] }],
                 ['linkedIn', { value: `https://linkedin.com/in/${firstName.toLowerCase()}-${lastName.toLowerCase()}-${i}` }],
                 ['phone', { value: `(${Math.floor(Math.random() * 900) + 100}) ${Math.floor(Math.random() * 900) + 100}-${Math.floor(Math.random() * 9000) + 1000}` }],
                 ['city', { value: city }],
                 ['state', { value: state }],
                 ['country', { value: countries[i % countries.length] }],
-                ['employees', { value: Math.floor(Math.random() * 10000) + 10 }],
-                ['revenue', { value: Math.floor(Math.random() * 100000000) + 1000000 }],  // Number for currency formatting
+                ['employees', { value: companyObj.employees }],
+                ['revenue', { value: Math.floor(Math.random() * 100000000) + 1000000 }],
                 ['industry', { value: industries[i % industries.length] }],
-                ['website', { value: `https://${company.toLowerCase().replace(' ', '')}.com` }],
+                ['website', { value: `https://${companyDomain}` }],
                 ['founded', { value: 1990 + (i % 35) }],
                 ['funding', { value: fundingStages[i % fundingStages.length] }],
-                ['twitter', { value: `@${company.toLowerCase().replace(' ', '')}` }],
+                ['twitter', { value: `@${companyName.replace(/\s/g, '').toLowerCase()}` }],
                 ['department', { value: departments[i % departments.length] }],
                 ['seniority', { value: seniorities[i % seniorities.length] }],
                 ['location', { value: `${city}, ${state}, ${countries[i % countries.length]}` }],
@@ -155,8 +181,8 @@ export function generateMockData(
                 ['yearsExperience', { value: 1 + (i % 25) }],
                 ['skills', { value: skills[i % skills.length] }],
                 ['interests', { value: interests[i % interests.length] }],
-                ['lastContact', { value: new Date(2024, i % 12, (i % 28) + 1) }],  // Date object for date formatting
-                ['verified', { value: i % 3 === 0 }],  // Boolean for checkbox
+                ['lastContact', { value: new Date(2024, i % 12, (i % 28) + 1) }],
+                ['verified', { value: i % 3 === 0 }],
                 ['status', { value: statuses[i % statuses.length] }],
                 ['notes', { value: i % 3 === 0 ? 'High priority lead' : i % 3 === 1 ? 'Follow up next week' : '' }],
             ])

@@ -11,6 +11,7 @@ import type { GridColumn } from './types/grid';
 import type { GridConfig } from './config/GridConfig';
 import { GridEngine } from './engine/GridEngine';
 import { TagEditor } from './examples/editors/TagEditor';
+import { MultiSelectEditor } from './examples/editors/MultiSelectEditor';
 import { JsonEditorDrawer } from './examples/editors/JsonEditorDrawer';
 import { PhoneNumberDrawer } from './examples/editors/PhoneNumberDrawer';
 import { LinkedRecordDrawer } from './examples/editors/LinkedRecordDrawer';
@@ -47,6 +48,34 @@ if (statusCol) {
         component: TagEditor
     };
 }
+
+// Add Tags Column for Multi-Select Edit
+initialCols.push({
+    id: 'tags',
+    title: 'Tags (Multi)',
+    width: 200,
+    type: 'text',
+    visible: true,
+    editor: {
+        mode: 'custom',
+        component: MultiSelectEditor
+    },
+    formatter: (value: any) => {
+        if (Array.isArray(value)) {
+            return value.join(', ');
+        }
+        return String(value || '');
+    }
+});
+
+// Populate Tags Data
+initialRows.forEach((row, i) => {
+    const tags = [];
+    if (i % 2 === 0) tags.push('Feature');
+    if (i % 3 === 0) tags.push('Urgent');
+    if (i % 5 === 0) tags.push('Bug');
+    row.cells.set('tags', { value: tags });
+});
 
 // Add Metadata Column for Drawer Edit
 initialCols.push({

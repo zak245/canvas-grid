@@ -1,5 +1,6 @@
 import { GridEngine } from '../engine/GridEngine';
 import { CellFormatter } from '../utils/CellFormatter';
+import { ImageCache } from '../utils/ImageCache';
 import { GridRow, GridColumn } from '../types/grid';
 
 export class CanvasRenderer {
@@ -48,49 +49,114 @@ export class CanvasRenderer {
 
         // Helper to draw a set of columns
         const drawColumns = (columns: typeof visibleColumns, isScrollable: boolean) => {
-        let y = rowStartIndex * theme.rowHeight;
-        for (const row of visibleRows) {
+            let y = rowStartIndex * theme.rowHeight;
+            for (const row of visibleRows) {
                 // Calculate initial X for this pass
                 let x = isScrollable ? scrollableGridX : 0; 
 
                 for (const col of columns) {
-                const cell = row.cells.get(col.id);
+                    const cell = row.cells.get(col.id);
 
-                // Border
-                ctx.strokeStyle = theme.gridLineColor;
-                ctx.strokeRect(x, y, col.width, theme.rowHeight);
+                    // Border
+                    ctx.strokeStyle = theme.gridLineColor;
+                    ctx.strokeRect(x, y, col.width, theme.rowHeight);
 
                     // Error indication
-                if (cell?.error) {
+                    if (cell?.error) {
                         ctx.fillStyle = 'rgba(254, 226, 226, 0.5)';
-                    ctx.fillRect(x, y, col.width, theme.rowHeight);
+                        ctx.fillRect(x, y, col.width, theme.rowHeight);
                         ctx.strokeStyle = '#ef4444';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(x + 1, y + 1, col.width - 2, theme.rowHeight - 2);
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(x + 1, y + 1, col.width - 2, theme.rowHeight - 2);
                         ctx.lineWidth = 1;
-                }
+                    }
+
+                    let textXOffset = 0;
+
+                    // Draw Company Logo
+                    if (cell?.value && (col.type === 'linked' || col.id === 'company')) {
+                        let logoUrl: string | undefined;
+                        const val = cell.value;
+                        
+                        if (typeof val === 'object' && val.logo) {
+                            logoUrl = val.logo;
+                        } else if (typeof val === 'string' && val.startsWith('{')) {
+                            try {
+                                const parsed = JSON.parse(val);
+                                if (parsed.logo) logoUrl = parsed.logo;
+                            } catch {}
+                        }
+
+                        if (logoUrl) {
+                            const imgSize = Math.min(20, theme.rowHeight - 8);
+                            const imgX = x + 8;
+                            const imgY = y + (theme.rowHeight - imgSize) / 2;
+
+                            // Use cache
+                            const img = ImageCache.get(logoUrl);
+                            
+                            if (img) {
+                                ctx.save();
+                                ctx.beginPath();
+                                ctx.arc(imgX + imgSize/2, imgY + imgSize/2, imgSize/2, 0, Math.PI * 2);
+                                ctx.clip();
+                                ctx.drawImage(img, imgX, imgY, imgSize, imgSize);
+                                ctx.restore();
+                                
+                                // Draw simple border around logo
+                                ctx.beginPath();
+                                ctx.arc(imgX + imgSize/2, imgY + imgSize/2, imgSize/2, 0, Math.PI * 2);
+                                ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+                                ctx.lineWidth = 1;
+                                ctx.stroke();
+                            } else {
+                                // Loading placeholder
+                                ctx.beginPath();
+                                ctx.arc(imgX + imgSize/2, imgY + imgSize/2, imgSize/2, 0, Math.PI * 2);
+                                ctx.fillStyle = '#f3f4f6';
+                                ctx.fill();
+                            }
+                            
+                            textXOffset = imgSize + 8;
+                        }
+                    }
 
                     // Text
-                const displayValue = CellFormatter.format(cell, col, col.width - 16);
-                if (displayValue) {
+                    let displayValue = CellFormatter.format(cell, col, col.width - 16 - textXOffset);
+                    
+                    // Fallback: If displayValue is empty OR '[object Object]' for linked/company column, try to extract name directly
+                    // This fixes issues where CellFormatter cache might be stuck with empty strings or bad object stringification
+                    if ((!displayValue || displayValue === '[object Object]') && (col.type === 'linked' || col.id === 'company') && cell?.value && typeof cell.value === 'object') {
+                         const rawName = cell.value.name || cell.value.label || cell.value.title || cell.value.id;
+                         if (rawName) {
+                             displayValue = String(rawName);
+                             // Apply overflow manually for fallback
+                             const maxChars = Math.floor((col.width - 16 - textXOffset) / 7);
+                             if (displayValue.length > maxChars) {
+                                 displayValue = displayValue.substring(0, maxChars - 1) + '…';
+                             }
+                         }
+                    }
+
+                    if (displayValue && displayValue !== '[object Object]') {
                         ctx.fillStyle = cell?.error ? '#dc2626' : (cell?.style?.color || '#000');
-                    ctx.font = `${theme.fontSize}px ${theme.fontFamily}`;
-                    ctx.textBaseline = 'middle';
-                    ctx.textAlign = cell?.style?.align || 'left';
+                        ctx.font = `${theme.fontSize}px ${theme.fontFamily}`;
+                        ctx.textBaseline = 'middle';
+                        ctx.textAlign = cell?.style?.align || 'left';
 
-                    const textX = cell?.style?.align === 'right'
-                        ? x + col.width - 8
-                        : (cell?.style?.align === 'center'
-                            ? x + col.width / 2
-                            : x + 8);
+                        const textX = cell?.style?.align === 'right'
+                            ? x + col.width - 8
+                            : (cell?.style?.align === 'center'
+                                ? x + col.width / 2
+                                : x + 8 + textXOffset);
 
-                    ctx.fillText(displayValue, textX, y + theme.rowHeight / 2);
+                        ctx.fillText(displayValue, textX, y + theme.rowHeight / 2);
+                    }
+
+                    x += col.width;
                 }
-
-                x += col.width;
+                y += theme.rowHeight;
             }
-            y += theme.rowHeight;
-        }
         };
 
         // 3. Draw Scrollable Data Grid (Layer 1)
@@ -470,6 +536,21 @@ export class CanvasRenderer {
             ctx.moveTo(10, 8); ctx.lineTo(10, 17);
             ctx.moveTo(14, 8); ctx.lineTo(14, 17);
             ctx.stroke();
+        } else if (icon === 'maximize') {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            // Top-right arrow
+            ctx.moveTo(15, 9); ctx.lineTo(19, 5);
+            ctx.moveTo(19, 5); ctx.lineTo(15, 5);
+            ctx.moveTo(19, 5); ctx.lineTo(19, 9);
+            // Bottom-left arrow
+            ctx.moveTo(9, 15); ctx.lineTo(5, 19);
+            ctx.moveTo(5, 19); ctx.lineTo(5, 15);
+            ctx.moveTo(5, 19); ctx.lineTo(9, 19);
+            ctx.stroke();
+            // Small box in center
+            ctx.strokeRect(10, 10, 4, 4);
         }
         
         ctx.restore();
@@ -775,7 +856,7 @@ export class CanvasRenderer {
             // Show controls if Hovered OR Selected
             if (isHovered || isSelected) {
                 const cbSize = 14;
-                const cbX = (rowHeaderWidth - cbSize) / 2;
+                const cbX = 8;
                 const cbY = y + (theme.rowHeight - cbSize) / 2;
                 
                 // Draw Checkbox
@@ -809,17 +890,23 @@ export class CanvasRenderer {
 
                 // Action Buttons (Only on Hover)
                 if (isHovered) {
-                     const actionX = rowHeaderWidth - 18;
-                     const actionY = y + (theme.rowHeight - 14) / 2;
-                     this.drawIcon(ctx, 'trash', actionX, actionY, 14, '#ef4444');
+                     // Enrich Icon
+                     const enrichX = rowHeaderWidth - 34; 
+                     const enrichY = y + (theme.rowHeight - 14) / 2;
+                     this.drawIcon(ctx, 'sparkles', enrichX, enrichY, 14, '#8b5cf6');
+
+                     // Detail Icon
+                     const detailX = rowHeaderWidth - 16;
+                     const detailY = y + (theme.rowHeight - 14) / 2;
+                     this.drawIcon(ctx, 'maximize', detailX, detailY, 14, '#6b7280');
                 }
             } else {
                 // Default: Row Number
                 ctx.fillStyle = '#9ca3af';
                 ctx.font = `${theme.fontSize}px ${theme.fontFamily}`;
-                ctx.textAlign = 'center';
+                ctx.textAlign = 'left';
                 ctx.textBaseline = 'middle';
-                ctx.fillText(String(rowIndex + 1), rowHeaderWidth / 2, y + theme.rowHeight / 2);
+                ctx.fillText(String(rowIndex + 1), 8, y + theme.rowHeight / 2);
             }
 
             y += theme.rowHeight;

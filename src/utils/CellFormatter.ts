@@ -28,7 +28,12 @@ export class CellFormatter {
 
         // Check cache first
         if (cell._cached !== undefined) {
-            return this.applyOverflow(cell._cached, maxWidth);
+            // Auto-invalidate bad cache (Fix for [object Object] sticking across HMR)
+            if (cell._cached === '[object Object]' || cell._cached.startsWith('[object') || cell._cached === '') {
+                delete cell._cached;
+            } else {
+                return this.applyOverflow(cell._cached, maxWidth);
+            }
         }
 
         // Custom Formatter from Column
@@ -60,6 +65,14 @@ export class CellFormatter {
             case 'url':
                 formatted = this.formatUrl(value);
                 break;
+            case 'linked':
+                // formatted = this.formatLinked(value);
+                if (typeof value === 'object' && value) {
+                    formatted = String(value.name || value.label || value.title || value.id || '');
+                } else {
+                     formatted = String(value || '');
+                }
+                break;
             case 'ai':
                 formatted = this.formatAI(value);
                 break;
@@ -70,14 +83,25 @@ export class CellFormatter {
         }
 
         // Cache the result
-        cell._cached = formatted;
-
+        // optimization: don't cache empty strings for linked types to prevent "invisible" state
+        if (formatted !== '' || type !== 'linked') {
+            cell._cached = formatted;
+        }
+        
         return this.applyOverflow(formatted, maxWidth);
     }
 
     private static formatText(value: any): string {
         if (typeof value === 'string') return value;
         if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+        
+        // Handle objects that shouldn't be converted to [object Object]
+        if (typeof value === 'object' && value !== null) {
+            // Try to extract a meaningful string representation
+            const name = value.name || value.label || value.title || value.id;
+            if (name) return String(name);
+        }
+        
         return '';
     }
 

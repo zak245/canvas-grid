@@ -1,5 +1,6 @@
 import { GridEngine } from './GridEngine';
 import { CellPosition } from '../types/grid';
+import { CellFormatter } from '../utils/CellFormatter';
 
 export class KeyboardHandler {
     constructor(private engine: GridEngine) { }
@@ -281,7 +282,17 @@ export class KeyboardHandler {
                 if (selectedCells.has(`${r}:${c}`)) {
                     const col = columns[c];
                     const cell = row?.cells.get(col.id);
-                    let value = cell?.value?.toString() || '';
+                    
+                    // Use CellFormatter to get the display value instead of raw toString()
+                    // This handles objects (like company cells) correctly
+                    let value = CellFormatter.format(cell, col);
+                    
+                    // Fallback: If formatter returned [object Object], try to extract name directly
+                    // This safeguards against formatter cache issues
+                    if (value === '[object Object]' && cell?.value && typeof cell.value === 'object') {
+                        value = cell.value.name || cell.value.label || cell.value.title || cell.value.id || '';
+                    }
+                    
                     if (value.includes('\t') || value.includes('\n')) {
                         value = `"${value.replace(/"/g, '""')}"`;
                     }
