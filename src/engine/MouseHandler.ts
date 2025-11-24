@@ -11,6 +11,10 @@ export class MouseHandler {
     private resizingStartWidth: number = 0;
     private resizingStartX: number = 0;
 
+    // Reorder State
+    private isReordering = false;
+    private reorderCandidate: { colIndex: number, startX: number, dragOffset: number } | null = null;
+
     constructor(private engine: GridEngine) { }
 
     handleMouseDown = (e: MouseEvent) => {
@@ -30,13 +34,11 @@ export class MouseHandler {
         }
 
         // 2. Check for "Add Row" button click
-        // Convert to grid coordinates
         const gridY = (e.offsetY - theme.headerHeight) + scrollTop;
         const totalRows = this.engine.model.getRowCount();
         const addRowY = totalRows * theme.rowHeight;
         
         if (gridY >= addRowY && gridY < addRowY + theme.rowHeight) {
-            // Clicked on "Add Row"
             this.engine.addRow({ cells: new Map() });
             return;
         }
@@ -113,9 +115,23 @@ export class MouseHandler {
             return;
         }
 
-        // 2. Handle Cursor Styling
+        // 2. Handle Reordering
+        if (this.reorderCandidate && !this.isReordering) {
+            // Check threshold to start drag
+            if (Math.abs(e.clientX - this.reorderCandidate.startX) > 5) {
+                this.isReordering = true;
+                canvas.style.cursor = 'grabbing';
+            }
+        }
+
+        if (this.isReordering && this.reorderCandidate) {
+            this.updateReorderState(e.clientX);
+            canvas.style.cursor = 'grabbing';
+            return;
+        }
+
+        // 3. Handle Cursor Styling
         if (e.offsetY < theme.headerHeight) {
-            // Header Hover Logic
             const { colIndex, onEdge } = this.getHeaderAt(e.offsetX);
             
             if (onEdge) {
@@ -141,7 +157,7 @@ export class MouseHandler {
             canvas.style.cursor = 'default';
         }
 
-        // 3. Handle Cell Drag Operations
+        // 4. Handle Cell Drag Operations
         if (isFilling && selection) {
             this.updateFillRange(e.offsetX, e.offsetY, selection);
         } else if (this.isDragging && this.dragStart) {
@@ -153,20 +169,32 @@ export class MouseHandler {
         const { isFilling, selection, fillRange } = this.engine.store.getState();
         const { theme } = this.engine;
 
+        // Handle Reorder Drop
+        if (this.isReordering && this.reorderCandidate) {
+            const targetIndex = this.calculateReorderTarget(e.clientX);
+            if (targetIndex !== this.reorderCandidate.colIndex) {
+                this.engine.moveColumn(this.reorderCandidate.colIndex, targetIndex);
+            }
+            
+            this.isReordering = false;
+            this.reorderCandidate = null;
+            this.engine.store.setState({ reorderState: null });
+            return;
+        }
+
         // Handle Column Selection (Click on Header)
-        // Only if we clicked in the header area and were NOT resizing
-        if (e.offsetY < theme.headerHeight && !this.isResizing) {
+        if (e.offsetY < theme.headerHeight && !this.isResizing && !this.isReordering) {
             const { colIndex, xInCol } = this.getHeaderAt(e.offsetX);
             const visibleCols = this.engine.model.getVisibleColumns();
             
             if (colIndex >= 0) {
                 const column = visibleCols[colIndex];
                 // Check if we clicked the menu area (don't select if clicking menu)
-                // Menu area is right 30px
                  if (xInCol <= column.width - 30) {
                      this.engine.selectColumn(column.id, e.metaKey || e.ctrlKey, e.shiftKey);
                  }
             }
+            this.reorderCandidate = null;
         }
 
         if (isFilling) {
@@ -182,8 +210,6 @@ export class MouseHandler {
 
     handleDoubleClick = (e: MouseEvent) => {
         const { theme } = this.engine;
-        
-        // Header Double Click -> Auto Resize
         if (e.offsetY < theme.headerHeight) {
             const { colIndex, onEdge } = this.getHeaderAt(e.offsetX);
             if (onEdge && colIndex >= 0) {
@@ -207,7 +233,6 @@ export class MouseHandler {
         const totalWidth = visibleCols.reduce((sum, c) => sum + c.width, 0);
         const x = e.offsetX + scrollLeft - theme.rowHeaderWidth;
         
-        // Use a small tolerance for ghost column click
         if (x >= totalWidth - 5 && x < totalWidth + 55) {
             e.preventDefault();
             e.stopPropagation();
@@ -218,7 +243,6 @@ export class MouseHandler {
                  return;
             }
             
-            // Smart positioning logic (Anchor to Ghost Button)
             const offsetInGhost = x - totalWidth;
             const ghostStartX = e.clientX - offsetInGhost;
             const rect = (e.target as HTMLElement).getBoundingClientRect();
@@ -244,7 +268,6 @@ export class MouseHandler {
         if (onEdge) {
             e.preventDefault();
             e.stopPropagation();
-            // Close menus
             this.engine.store.setState({ activeHeaderMenu: null, activeAddColumnMenu: null });
 
             this.isResizing = true;
@@ -255,26 +278,22 @@ export class MouseHandler {
         }
 
         // 3. Check Menu Click (Right side)
-        // Increased to 30px to match renderer icon space
         if (xInCol > column.width - 30) {
             e.preventDefault();
             e.stopPropagation();
             
             const currentMenu = this.engine.store.getState().activeHeaderMenu;
-            
-            // Toggle
             if (currentMenu && currentMenu.colId === column.id) {
                  this.engine.store.setState({ activeHeaderMenu: null });
                  return;
             }
             
-            // Smart Positioning logic (Anchor to Column Header)
             const rect = (e.target as HTMLElement).getBoundingClientRect();
             const colStartX = e.clientX - xInCol;
             const colEndX = colStartX + column.width;
             
             const MENU_WIDTH = 200;
-            let menuX = colEndX - MENU_WIDTH; // Align right always
+            let menuX = colEndX - MENU_WIDTH;
             if (menuX + MENU_WIDTH > window.innerWidth) menuX = window.innerWidth - MENU_WIDTH - 10;
             const menuY = rect.top + theme.headerHeight;
 
@@ -285,11 +304,74 @@ export class MouseHandler {
             return;
         }
 
-        // 4. General Header Click (Selection Prep)
-        // Close menus
+        // 4. Prepare for Reorder
         this.engine.store.setState({ activeHeaderMenu: null, activeAddColumnMenu: null });
+        this.reorderCandidate = { 
+            colIndex, 
+            startX: e.clientX,
+            dragOffset: xInCol
+        };
+    }
+
+    private updateReorderState(clientX: number) {
+        if (!this.reorderCandidate) return;
         
-        // We don't start drag anymore. Selection happens on MouseUp.
+        const targetIndex = this.calculateReorderTarget(clientX);
+
+        this.engine.store.setState({
+            reorderState: {
+                colIndex: this.reorderCandidate.colIndex,
+                dragX: clientX,
+                targetIndex,
+                dragOffset: this.reorderCandidate.dragOffset
+            }
+        });
+    }
+
+    private calculateReorderTarget(clientX: number): number {
+        const { theme } = this.engine;
+        const { scrollLeft } = this.engine.viewport.getState();
+        const visibleCols = this.engine.model.getVisibleColumns();
+        const sourceIndex = this.reorderCandidate?.colIndex ?? -1;
+
+        if (sourceIndex === -1) return -1;
+
+        const draggedCol = visibleCols[sourceIndex];
+        const ghostWidth = draggedCol.width; 
+        const dragOffset = this.reorderCandidate?.dragOffset ?? (ghostWidth / 2);
+        
+        const ghostLeft = (clientX - theme.rowHeaderWidth + scrollLeft) - dragOffset;
+        const ghostRight = ghostLeft + ghostWidth;
+
+        const candidates: number[] = [];
+        let currentX = 0;
+
+        for (let i = 0; i < visibleCols.length; i++) {
+            const col = visibleCols[i];
+            if (i !== sourceIndex) {
+                const colLeft = currentX;
+                const colRight = currentX + col.width;
+                const overlapStart = Math.max(ghostLeft, colLeft);
+                const overlapEnd = Math.min(ghostRight, colRight);
+                const overlapWidth = Math.max(0, overlapEnd - overlapStart);
+                
+                if (overlapWidth > col.width * 0.3) {
+                    candidates.push(i);
+                }
+            }
+            currentX += col.width;
+        }
+
+        if (candidates.length === 0) return sourceIndex;
+
+        const startX = this.reorderCandidate?.startX ?? 0;
+        const isDraggingRight = clientX > startX;
+
+        if (isDraggingRight) {
+            return Math.max(...candidates);
+        } else {
+            return Math.min(...candidates);
+        }
     }
 
     private getHeaderAt(x: number): { colIndex: number; onEdge: boolean; xInCol: number } {
@@ -308,18 +390,12 @@ export class MouseHandler {
             const width = columns[i].width;
             if (gridX >= currentX && gridX < currentX + width) {
                 const xInCol = gridX - currentX;
-                
-                // Check Right Edge (standard resize handle)
                 if (Math.abs(xInCol - width) <= edgeThreshold) {
                     return { colIndex: i, onEdge: true, xInCol };
                 }
-                
-                // Check Left Edge (resize handle for previous column)
                 if (xInCol <= edgeThreshold && i > 0) {
-                    // Return previous column as the target for resizing
                     return { colIndex: i - 1, onEdge: true, xInCol };
                 }
-
                 return { colIndex: i, onEdge: false, xInCol };
             }
             currentX += width;
@@ -328,7 +404,6 @@ export class MouseHandler {
         return { colIndex: -1, onEdge: false, xInCol: 0 };
     }
 
-    // --- Existing Helpers ---
     private getCellAt(x: number, y: number): CellPosition | null {
         const { scrollTop, scrollLeft } = this.engine.viewport.getState();
         const { theme } = this.engine;

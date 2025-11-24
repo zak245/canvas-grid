@@ -18,6 +18,13 @@ export interface GridEngineState {
     fillRange: GridSelection | null;
     hoverPosition: { x: number; y: number } | null;  // For tooltips
     editingCell: { col: number; row: number } | null;
+    // NEW: Reorder State (Restored for Text Swapping)
+    reorderState: {
+        colIndex: number; // Index in visibleColumns
+        dragX: number;    // Visual X position relative to canvas
+        targetIndex: number; // Where it would drop
+        dragOffset: number; // Offset of mouse within the column
+    } | null;
     // NEW: Overlay State (Single Source of Truth)
     activeHeaderMenu: { colId: string, x: number, y: number } | null;
     activeAddColumnMenu: { x: number, y: number } | null;
@@ -99,6 +106,7 @@ export class GridEngine {
             fillRange: null,
             hoverPosition: null,
             editingCell: null,
+            reorderState: null,
             activeHeaderMenu: null,
             activeAddColumnMenu: null,
         }));
@@ -127,6 +135,7 @@ export class GridEngine {
             fillRange: null,
             hoverPosition: null,
             editingCell: null,
+            reorderState: null,
             activeHeaderMenu: null,
             activeAddColumnMenu: null,
         }));

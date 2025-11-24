@@ -255,6 +255,7 @@ export class CanvasRenderer {
         const { scrollLeft, width } = engine.viewport.getState();
         const visibleColumns = engine.model.getVisibleColumns();
         const sortState = engine.model.getSortState();
+        const reorderState = engine.store.getState().reorderState;
 
         ctx.save();
         // Stick to top, scroll horizontally
@@ -273,72 +274,88 @@ export class CanvasRenderer {
         ctx.lineTo(totalVisibleWidth, theme.headerHeight);
         ctx.stroke();
 
+        // Determine Visual Order
+        let visualCols = [...visibleColumns];
+        if (reorderState) {
+            const { colIndex, targetIndex } = reorderState;
+            const [item] = visualCols.splice(colIndex, 1);
+            visualCols.splice(targetIndex, 0, item);
+        }
+
         let x = 0;
         for (let i = 0; i < visibleColumns.length; i++) {
-            const col = visibleColumns[i];
+            const originalCol = visibleColumns[i];
+            const visualCol = visualCols[i];
             
             // Background (per cell)
             ctx.fillStyle = theme.headerBackgroundColor;
-            ctx.fillRect(x, 0, col.width, theme.headerHeight);
+            ctx.fillRect(x, 0, originalCol.width, theme.headerHeight);
 
-            // Border
+            // Border (Always visible, structure intact)
             ctx.strokeStyle = theme.borderColor;
-            ctx.strokeRect(x, 0, col.width, theme.headerHeight);
+            ctx.strokeRect(x, 0, originalCol.width, theme.headerHeight);
 
-            // Text
-            ctx.fillStyle = theme.headerColor || '#374151';
-            ctx.font = `${theme.headerFontSize}px ${theme.headerFontFamily}`;
-            ctx.textBaseline = 'middle';
-            ctx.textAlign = 'left';
-            
-            const textPadding = 8;
-            const iconSpace = 28;
-            const availableWidth = col.width - (textPadding * 2) - iconSpace;
-            
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(x + textPadding, 0, availableWidth, theme.headerHeight);
-            ctx.clip();
-            ctx.fillText(col.title, x + textPadding, theme.headerHeight / 2);
-            ctx.restore();
+            // Text Drawing
+            // Don't draw text for the ghost (dragged item)
+            const isGhost = reorderState && visualCol.id === visibleColumns[reorderState.colIndex].id;
 
-            // Icons (Sort/Menu)
-            const sort = sortState.find(s => s.columnId === col.id);
-            const iconX = x + col.width - 20;
-            const iconY = theme.headerHeight / 2;
-            
-            // Check Hover
-            const hoverPos = engine.store.getState().hoverPosition;
-            let isHovered = false;
-            if (hoverPos && hoverPos.y < theme.headerHeight) {
-                 const relativeHoverX = hoverPos.x - theme.rowHeaderWidth + scrollLeft;
-                 if (relativeHoverX >= x && relativeHoverX < x + col.width) isHovered = true;
-            }
-
-            if (sort) {
+            if (!isGhost) {
+                ctx.fillStyle = theme.headerColor || '#374151';
+                ctx.font = `${theme.headerFontSize}px ${theme.headerFontFamily}`;
+                ctx.textBaseline = 'middle';
+                ctx.textAlign = 'left';
+                
+                const textPadding = 8;
+                const iconSpace = 28;
+                const availableWidth = originalCol.width - (textPadding * 2) - iconSpace;
+                
+                ctx.save();
                 ctx.beginPath();
-                ctx.fillStyle = '#2563eb';
-                if (sort.direction === 'asc') {
-                    ctx.moveTo(iconX, iconY + 3);
-                    ctx.lineTo(iconX + 4, iconY - 3);
-                    ctx.lineTo(iconX + 8, iconY + 3);
-                } else {
-                    ctx.moveTo(iconX, iconY - 3);
-                    ctx.lineTo(iconX + 4, iconY + 3);
-                    ctx.lineTo(iconX + 8, iconY - 3);
+                ctx.rect(x + textPadding, 0, availableWidth, theme.headerHeight);
+                ctx.clip();
+                ctx.fillText(visualCol.title, x + textPadding, theme.headerHeight / 2);
+                ctx.restore();
+
+                // Icons (Sort/Menu) - Only if not reordering
+                if (!reorderState) {
+                    const sort = sortState.find(s => s.columnId === visualCol.id);
+                    const iconX = x + originalCol.width - 20;
+                    const iconY = theme.headerHeight / 2;
+                    
+                    // Check Hover
+                    const hoverPos = engine.store.getState().hoverPosition;
+                    let isHovered = false;
+                    if (hoverPos && hoverPos.y < theme.headerHeight) {
+                         const relativeHoverX = hoverPos.x - theme.rowHeaderWidth + scrollLeft;
+                         if (relativeHoverX >= x && relativeHoverX < x + originalCol.width) isHovered = true;
+                    }
+
+                    if (sort) {
+                        ctx.beginPath();
+                        ctx.fillStyle = '#2563eb';
+                        if (sort.direction === 'asc') {
+                            ctx.moveTo(iconX, iconY + 3);
+                            ctx.lineTo(iconX + 4, iconY - 3);
+                            ctx.lineTo(iconX + 8, iconY + 3);
+                        } else {
+                            ctx.moveTo(iconX, iconY - 3);
+                            ctx.lineTo(iconX + 4, iconY + 3);
+                            ctx.lineTo(iconX + 8, iconY - 3);
+                        }
+                        ctx.fill();
+                    } else if (isHovered) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = '#9ca3af';
+                        ctx.lineWidth = 1.5;
+                        ctx.moveTo(iconX, iconY - 2);
+                        ctx.lineTo(iconX + 4, iconY + 2);
+                        ctx.lineTo(iconX + 8, iconY - 2);
+                        ctx.stroke();
+                    }
                 }
-                ctx.fill();
-            } else if (isHovered) {
-                ctx.beginPath();
-                ctx.strokeStyle = '#9ca3af';
-                ctx.lineWidth = 1.5;
-                ctx.moveTo(iconX, iconY - 2);
-                ctx.lineTo(iconX + 4, iconY + 2);
-                ctx.lineTo(iconX + 8, iconY - 2);
-                ctx.stroke();
             }
 
-            x += col.width;
+            x += originalCol.width;
         }
 
         // Ghost Column (+)
@@ -359,6 +376,60 @@ export class CanvasRenderer {
         ctx.moveTo(centerX, centerY - 5);
         ctx.lineTo(centerX, centerY + 5);
         ctx.stroke();
+
+        // Draw Ghost Header (Overlay)
+        if (reorderState) {
+            const draggedCol = visibleColumns[reorderState.colIndex];
+            
+            // Measure Text Width
+            ctx.font = `600 ${theme.headerFontSize}px ${theme.headerFontFamily}`;
+            const textWidth = ctx.measureText(draggedCol.title).width;
+            const padding = 16;
+            const ghostPillWidth = textWidth + padding * 2;
+            
+            // Position Ghost based on Drag Offset (Natural Drag)
+            const dragOffset = reorderState.dragOffset || 0;
+            
+            // dragX is clientX
+            // We need to calculate: clientX - rowHeaderWidth + scrollLeft - dragOffset
+            const ghostX = reorderState.dragX - theme.rowHeaderWidth + scrollLeft - dragOffset;
+            
+            ctx.save();
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
+            ctx.shadowBlur = 12;
+            ctx.shadowOffsetY = 4;
+            
+            // Pill Background
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            
+            // Rounded Rect
+            const r = 6;
+            const gx = ghostX;
+            const gy = 4;
+            const gw = ghostPillWidth;
+            const gh = theme.headerHeight - 8;
+            
+            ctx.beginPath();
+            ctx.moveTo(gx + r, gy);
+            ctx.lineTo(gx + gw - r, gy);
+            ctx.quadraticCurveTo(gx + gw, gy, gx + gw, gy + r);
+            ctx.lineTo(gx + gw, gy + gh - r);
+            ctx.quadraticCurveTo(gx + gw, gy + gh, gx + gw - r, gy + gh);
+            ctx.lineTo(gx + r, gy + gh);
+            ctx.quadraticCurveTo(gx, gy + gh, gx, gy + gh - r);
+            ctx.lineTo(gx, gy + r);
+            ctx.quadraticCurveTo(gx, gy, gx + r, gy);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Text
+            ctx.fillStyle = '#111827';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(draggedCol.title, ghostX + ghostPillWidth / 2, theme.headerHeight / 2);
+            
+            ctx.restore();
+        }
 
         ctx.restore();
     }
