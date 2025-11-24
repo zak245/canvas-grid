@@ -3,7 +3,7 @@
 export type CellValue = any;
 
 // Cell Types
-export type CellType = 'text' | 'number' | 'date' | 'boolean' | 'email' | 'url' | 'ai';
+export type CellType = 'text' | 'number' | 'date' | 'boolean' | 'email' | 'url' | 'ai' | 'linked';
 
 // Formatting options for each type
 export interface CellFormat {
@@ -67,6 +67,7 @@ export interface GridColumn {
         tooltip?: string;
     };
     editor?: ColumnEditorConfig;
+    formatter?: (value: any) => string;
 }
 
 export type EditorMode = 'inline' | 'drawer' | 'modal' | 'custom';
@@ -75,6 +76,17 @@ export interface ColumnEditorConfig {
     mode?: EditorMode;
     component?: any; // Custom React component for 'custom' mode
     options?: { label: string; value: any }[];
+    lockScroll?: boolean;
+}
+
+export interface EditorProps<T = any> {
+    value: T;
+    width: number;
+    height: number;
+    column: GridColumn;
+    onCommit: (newValue: T, shouldMove?: boolean) => void;
+    onCancel: () => void;
+    className?: string;
 }
 
 export interface GridRow {

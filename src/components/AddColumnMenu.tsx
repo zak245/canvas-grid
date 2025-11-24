@@ -11,6 +11,7 @@ interface AddColumnMenuProps {
     onClose: () => void;
     onToggleVisibility: (columnId: string, visible: boolean) => void;
     onCreateNew: (column: GridColumn) => void;
+    onAddColumnClick?: (column?: GridColumn) => void; // Add optional prop to match usage
 }
 
 export const AddColumnMenu: React.FC<AddColumnMenuProps> = ({
@@ -20,7 +21,8 @@ export const AddColumnMenu: React.FC<AddColumnMenuProps> = ({
     allColumns,
     onClose,
     onToggleVisibility,
-    onCreateNew
+    onCreateNew,
+    // onAddColumnClick - not used yet but prop exists
 }) => {
     const menuRef = useRef<HTMLDivElement>(null);
     const [search, setSearch] = useState('');

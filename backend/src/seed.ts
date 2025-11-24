@@ -4,14 +4,19 @@
  * Creates a sample grid with realistic GTM data
  */
 
+import mongoose from 'mongoose';
 import { connectDatabase, disconnectDatabase } from './db.js';
 import { Grid, Row } from './models.js';
 import { nanoid } from 'nanoid';
+import { fileURLToPath } from 'url';
 
-async function seed() {
+export async function seed(forcedGridId?: string) {
   console.log('🌱 Seeding database...\n');
 
-  await connectDatabase();
+  // Only connect if not already connected (for server usage)
+  if (mongoose.connection.readyState === 0) {
+    await connectDatabase();
+  }
 
   // Clear existing data
   console.log('Clearing existing data...');
@@ -20,7 +25,8 @@ async function seed() {
 
   // Create a grid
   console.log('Creating grid...');
-  const grid = new Grid({
+  
+  const gridData: any = {
     name: 'Q1 2024 Sales Prospects',
     columns: [
       {
@@ -132,7 +138,13 @@ async function seed() {
     settings: {
       defaultRowHeight: 32,
     },
-  });
+  };
+
+  if (forcedGridId) {
+    gridData._id = forcedGridId;
+  }
+
+  const grid = new Grid(gridData);
 
   await grid.save();
   console.log(`✓ Grid created: ${grid._id}`);
@@ -344,11 +356,16 @@ async function seed() {
   console.log('   3. Watch the data populate in real-time!');
   console.log('');
 
-  await disconnectDatabase();
+  // Only disconnect if we started the connection in this script (standalone mode)
+  if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    await disconnectDatabase();
+  }
 }
 
-seed().catch((error) => {
-  console.error('Seed failed:', error);
-  process.exit(1);
-});
-
+// Run seed if this file is executed directly
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  seed().catch((error) => {
+    console.error('Seed failed:', error);
+    process.exit(1);
+  });
+}

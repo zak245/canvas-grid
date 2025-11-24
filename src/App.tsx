@@ -5,19 +5,21 @@ import { AddColumnModal } from './components/AddColumnModal';
 import { ColumnsDrawer } from './components/ColumnsDrawer';
 import { EnrichmentMenu } from './components/EnrichmentMenu';
 import { EnrichmentProgress } from './components/EnrichmentProgress';
-import { generateMockData } from './utils/mockData';
+import { generateMockData, generateCompanyPool } from './utils/mockData';
 import { BackendAdapter } from './adapters';
 import type { GridColumn } from './types/grid';
 import type { GridConfig } from './config/GridConfig';
 import { GridEngine } from './engine/GridEngine';
 import { TagEditor } from './examples/editors/TagEditor';
 import { JsonEditorDrawer } from './examples/editors/JsonEditorDrawer';
+import { PhoneNumberDrawer } from './examples/editors/PhoneNumberDrawer';
+import { LinkedRecordDrawer } from './examples/editors/LinkedRecordDrawer';
 
 // Backend Configuration
 // Toggle USE_BACKEND to switch between local and backend modes
-const USE_BACKEND = false; // Set to false to use local mock data
-const BACKEND_URL = 'http://localhost:3001';
-const GRID_ID = '6923d4a14c6689f76d54a049'; // From seed-api output
+const USE_BACKEND = import.meta.env.VITE_USE_BACKEND === 'true'; 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+const GRID_ID = import.meta.env.VITE_GRID_ID || '6923deb29159ecd511020001'; // Default or from env
 
 // Generate initial data for local mode
 const { columns: initialCols, rows: initialRows } = generateMockData(20004, false);
@@ -57,6 +59,63 @@ initialCols.push({
         mode: 'drawer'
     }
 });
+
+// Configure Phone Column for Custom Drawer Edit
+const phoneCol = initialCols.find(c => c.id === 'phone');
+if (phoneCol) {
+    phoneCol.title = 'Phone Numbers';
+    phoneCol.width = 220;
+    phoneCol.editor = {
+        mode: 'custom',
+        component: PhoneNumberDrawer,
+        lockScroll: false
+    };
+    phoneCol.formatter = (value: any) => {
+        try {
+            if (typeof value === 'string' && value.trim().startsWith('[')) {
+                const parsed = JSON.parse(value);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    const primary = parsed.find((p: any) => p.isPrimary) || parsed[0];
+                    const count = parsed.length;
+                    return `${primary.number} (${primary.type})${count > 1 ? ` +${count - 1}` : ''}`;
+                }
+                return '';
+            }
+            return String(value || '');
+        } catch (e) {
+            return String(value || '');
+        }
+    };
+}
+
+// Generate Company Options for Editor
+const companyPool = generateCompanyPool(50);
+const companyOptions = companyPool.map(c => ({
+    label: c.name,
+    value: c
+}));
+
+// Configure Company Column (Linked Record)
+const companyCol = initialCols.find(c => c.id === 'company');
+if (companyCol) {
+    companyCol.editor = {
+        mode: 'custom',
+        component: LinkedRecordDrawer,
+        options: companyOptions,
+        lockScroll: false
+    };
+    companyCol.formatter = (value: any) => {
+        try {
+             if (typeof value === 'string' && value.trim().startsWith('{')) {
+                const parsed = JSON.parse(value);
+                return parsed.name || '';
+             }
+             return String(value || '');
+        } catch (e) {
+            return String(value || '');
+        }
+    };
+}
 
 // Create backend adapter if using backend mode
 const backendAdapter = USE_BACKEND ? new BackendAdapter({

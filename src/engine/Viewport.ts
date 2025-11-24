@@ -28,7 +28,7 @@ export class Viewport {
 
     private rowHeight: number = 32; // Default, should come from theme
     private headerHeight: number = 40;
-    private rowHeaderWidth: number = 50;
+    private rowHeaderWidth: number = 70;
 
     constructor(config?: Partial<ViewportState>) {
         if (config) {

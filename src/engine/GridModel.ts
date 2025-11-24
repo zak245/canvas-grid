@@ -22,6 +22,10 @@ export class GridModel {
         }
     }
 
+    public getAdapter(): DataAdapter | undefined {
+        return this.adapter || undefined;
+    }
+    
     // --- Column Management ---
     setColumns(columns: GridColumn[]): void {
         this.columns = columns;

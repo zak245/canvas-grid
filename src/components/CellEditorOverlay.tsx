@@ -70,9 +70,11 @@ export const CellEditorOverlay: React.FC<CellEditorOverlayProps> = ({ engine, co
             }}
         >
             <EditorComponent
+                key={`${row}-${col}`}
                 value={value}
                 width={column.width}
                 height={theme.rowHeight}
+                column={column}
                 onCommit={(newValue: any, shouldMove?: boolean) => {
                     engine.updateCell(row, column.id, newValue)
                         .then(() => {

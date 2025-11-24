@@ -107,7 +107,7 @@ export class BackendAdapter implements DataAdapter {
     
     // Cache rowId mappings for efficient cell updates (additive - don't overwrite)
     const startIndex = (data.page - 1) * data.pageSize;
-    transformedRows.forEach((row, idx) => {
+    transformedRows.forEach((row: GridRow, idx: number) => {
       this.rowIdCache.set(startIndex + idx, row.id);
     });
     
@@ -239,7 +239,7 @@ export class BackendAdapter implements DataAdapter {
 
   async pinColumn(columnId: string, pin: 'left' | 'right' | null): Promise<void> {
     // Not yet implemented in backend schema, but method exists for interface
-    console.warn('pinColumn not yet implemented in backend');
+    console.warn('pinColumn not yet implemented in backend', columnId, pin);
   }
 
   // ===== CELL OPERATIONS =====

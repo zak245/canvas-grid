@@ -1,5 +1,30 @@
 import { GridColumn, GridRow } from '../types/grid';
 
+export interface CompanyEntity {
+    id: string;
+    name: string;
+    domain: string;
+    logo: string;
+    employees: number;
+}
+
+export const generateCompanyPool = (count: number = 50): CompanyEntity[] => {
+    const companies = ['Acme Corp', 'TechStart Inc', 'Global Solutions', 'Innovate Labs', 'CloudScale', 'DataDrive', 'NextGen Systems', 'Synergy Partners', 'Apex Industries', 'FutureTech', 'Quantum Dynamics'];
+    
+    return Array.from({ length: count }, (_, i) => {
+        const baseName = companies[i % companies.length];
+        const suffix = Math.floor(i / companies.length) + 1;
+        const name = `${baseName} ${suffix}`;
+        return {
+            id: `comp_ref_${i}`,
+            name: name,
+            domain: `${baseName.toLowerCase().replace(/\s/g, '')}.com`,
+            logo: `https://logo.clearbit.com/${baseName.toLowerCase().replace(/\s/g, '')}.com`,
+            employees: Math.floor(Math.random() * 10000) + 10
+        };
+    });
+};
+
 // Generate realistic mock data for a Clay-like product
 export function generateMockData(
     numRows: number = 100000,
@@ -10,7 +35,7 @@ export function generateMockData(
         { id: 'firstName', title: 'First Name', width: 150, type: 'text', visible: true },
         { id: 'lastName', title: 'Last Name', width: 150, type: 'text', visible: true },
         { id: 'email', title: 'Email', width: 250, type: 'email', visible: true },
-        { id: 'company', title: 'Company', width: 200, type: 'text', visible: true },
+        { id: 'company', title: 'Company (Linked)', width: 200, type: 'linked', visible: true },
         { id: 'title', title: 'Job Title', width: 200, type: 'text', visible: true },
         { id: 'linkedIn', title: 'LinkedIn URL', width: 300, type: 'url', visible: true },
         { id: 'phone', title: 'Phone', width: 150, type: 'text', visible: true },
@@ -76,7 +101,6 @@ export function generateMockData(
     const states = ['CA', 'NY', 'TX', 'WA', 'MA', 'IL', 'CO', 'GA', 'FL'];
     const countries = ['United States', 'Canada', 'United Kingdom'];
     const industries = ['Technology', 'Finance', 'Healthcare', 'Retail', 'Manufacturing', 'Education', 'Consulting', 'Media', 'Real Estate'];
-    const revenues = ['$1M-$10M', '$10M-$50M', '$50M-$100M', '$100M-$500M', '$500M+'];
     const fundingStages = ['Seed', 'Series A', 'Series B', 'Series C', 'IPO', 'Bootstrapped'];
     const departments = ['Engineering', 'Sales', 'Marketing', 'Operations', 'Finance', 'HR', 'Product'];
     const seniorities = ['Entry', 'Mid-Level', 'Senior', 'Lead', 'Principal', 'VP', 'C-Level'];
@@ -87,12 +111,18 @@ export function generateMockData(
     const interests = ['AI/ML, Startups', 'SaaS, Enterprise', 'FinTech, Blockchain', 'B2B Sales'];
     const statuses = ['New', 'Contacted', 'Qualified', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost'];
 
+    const companyPool = generateCompanyPool(50);
+
     // Generate rows
     const rows: GridRow[] = [];
     for (let i = 0; i < numRows; i++) {
         const firstName = firstNames[i % firstNames.length];
         const lastName = lastNames[i % lastNames.length];
-        const company = companies[i % companies.length];
+        
+        // Select Linked Record from Pool
+        const companyObj = companyPool[i % companyPool.length];
+        const company = companies[i % companies.length]; // Keep for legacy references
+
         const city = cities[i % cities.length];
         const state = states[i % states.length];
 
@@ -102,7 +132,7 @@ export function generateMockData(
                 ['firstName', { value: `${firstName}_${Math.floor(i / firstNames.length)}` }],
                 ['lastName', { value: `${lastName}_${Math.floor(i / lastNames.length)}` }],
                 ['email', { value: `${firstName.toLowerCase()}.${lastName.toLowerCase()}${i}@example.com` }],
-                ['company', { value: `${company} ${Math.floor(i / companies.length) + 1}` }],
+                ['company', { value: JSON.stringify(companyObj) }],
                 ['title', { value: titles[i % titles.length] }],
                 ['linkedIn', { value: `https://linkedin.com/in/${firstName.toLowerCase()}-${lastName.toLowerCase()}-${i}` }],
                 ['phone', { value: `(${Math.floor(Math.random() * 900) + 100}) ${Math.floor(Math.random() * 900) + 100}-${Math.floor(Math.random() * 9000) + 1000}` }],

@@ -30,6 +30,9 @@ export interface GridEngineState {
     activeAddColumnMenu: { x: number, y: number } | null;
     editingHeader: string | null;
     activeColumnSettings: string | null;
+    // NEW: Row Actions State
+    activeRowDetail: number | null;
+    activeEnrichment: number | null;
 }
 
 export class GridEngine {
@@ -250,7 +253,7 @@ export class GridEngine {
         return {
             headerHeight: 40,
             rowHeight: 32,
-            rowHeaderWidth: 50,
+            rowHeaderWidth: 70,
             borderColor: '#e5e7eb',
             gridLineColor: 'rgba(0, 0, 0, 0.05)',
             headerBackgroundColor: '#f9fafb',
@@ -1060,6 +1063,95 @@ export class GridEngine {
 
         if (newScrollTop !== scrollTop || newScrollLeft !== scrollLeft) {
             this.scroll(newScrollTop, newScrollLeft);
+        }
+    }
+
+    /**
+     * Row Selection Helper
+     */
+    selectRow(rowIndex: number, multi: boolean = false) {
+        const colCount = this.model.getColumns().length;
+        if (colCount === 0) return;
+
+        const range = {
+            start: { col: 0, row: rowIndex },
+            end: { col: colCount - 1, row: rowIndex }
+        };
+        
+        const currentSelection = this.store.getState().selection;
+        
+        if (multi && currentSelection) {
+            this.store.setState({
+                selection: {
+                    primary: { col: 0, row: rowIndex },
+                    ranges: [...currentSelection.ranges, range]
+                }
+            });
+        } else {
+            this.store.setState({
+                selection: {
+                    primary: { col: 0, row: rowIndex },
+                    ranges: [range]
+                }
+            });
+        }
+    }
+
+    toggleRowSelection(rowIndex: number, multi: boolean = false) {
+        const selection = this.store.getState().selection;
+        const colCount = this.model.getColumns().length;
+        
+        if (!selection) {
+            this.selectRow(rowIndex, multi);
+            return;
+        }
+        
+        // Check if range covering this row exists
+        const existingRangeIndex = selection.ranges.findIndex(r => 
+            r.start.row === rowIndex && r.end.row === rowIndex &&
+            r.start.col === 0 && r.end.col >= colCount - 1
+        );
+
+        if (existingRangeIndex >= 0) {
+            // Deselect
+            const newRanges = [...selection.ranges];
+            newRanges.splice(existingRangeIndex, 1);
+            
+            if (newRanges.length === 0) {
+                this.store.setState({ selection: null });
+            } else {
+                this.store.setState({
+                    selection: {
+                        primary: selection.primary,
+                        ranges: newRanges
+                    }
+                });
+            }
+        } else {
+            // Select
+            this.selectRow(rowIndex, multi);
+        }
+    }
+
+    isRowSelected(rowIndex: number): boolean {
+        const selection = this.store.getState().selection;
+        if (!selection) return false;
+        const colCount = this.model.getColumns().length;
+        return selection.ranges.some(r => 
+            r.start.row <= rowIndex && r.end.row >= rowIndex &&
+            r.start.col === 0 && r.end.col >= colCount - 1
+        );
+    }
+
+    triggerRowAction(rowIndex: number, action: string) {
+        if (action === 'delete') {
+            const row = this.model.getAllRows()[rowIndex];
+            if (row) {
+                this.deleteRow(row.id);
+            }
+        }
+        if (this.lifecycle.onRowAction) {
+            this.lifecycle.onRowAction(rowIndex, action);
         }
     }
 

@@ -2,6 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import { connectDatabase } from './db.js';
 import router from './routes.js';
+import { Grid } from './models.js';
+import { seed } from './seed.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -40,6 +42,18 @@ async function start() {
   try {
     // Connect to database
     await connectDatabase();
+
+    // Auto-seed if empty (ensures demo works out of the box on deployment)
+    try {
+      const gridCount = await Grid.countDocuments();
+      if (gridCount === 0) {
+        console.log('📉 No grids found. Auto-seeding default data...');
+        // Use the default ID expected by the frontend
+        await seed('6923deb29159ecd511020001');
+      }
+    } catch (err) {
+      console.error('⚠️ Auto-seed check failed:', err);
+    }
 
     // Start server
     app.listen(PORT, () => {

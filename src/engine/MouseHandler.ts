@@ -11,6 +11,10 @@ export class MouseHandler {
     private resizingStartWidth: number = 0;
     private resizingStartX: number = 0;
 
+    // Row Selection State
+    private isSelectingRows = false;
+    private rowSelectionStart: number = -1;
+
     // Reorder State
     private isReordering = false;
     private reorderCandidate: { colIndex: number, startX: number, dragOffset: number } | null = null;
@@ -21,6 +25,32 @@ export class MouseHandler {
         const { theme } = this.engine;
         const { scrollTop } = this.engine.viewport.getState();
         
+        // 0. Check Row Header Interaction
+        if (e.offsetX < theme.rowHeaderWidth && e.offsetY > theme.headerHeight) {
+            const rowIndex = Math.floor((e.offsetY - theme.headerHeight + scrollTop) / theme.rowHeight);
+            const rowCount = this.engine.model.getRowCount();
+            
+            if (rowIndex >= 0 && rowIndex < rowCount) {
+                 const actionX = theme.rowHeaderWidth - 18;
+                 // Check for Action Button click
+                 if (e.offsetX >= actionX - 5 && e.offsetX <= actionX + 19) {
+                     this.engine.triggerRowAction(rowIndex, 'delete');
+                 } else {
+                     // Start Row Selection Drag
+                     this.isSelectingRows = true;
+                     this.rowSelectionStart = rowIndex;
+                     
+                     const isCtrl = e.metaKey || e.ctrlKey;
+                     if (isCtrl) {
+                         this.engine.toggleRowSelection(rowIndex, true);
+                     } else {
+                         this.engine.selectRow(rowIndex, e.shiftKey);
+                     }
+                 }
+            }
+            return;
+        }
+
         // 1. Check for Header Interaction
         if (e.offsetY < theme.headerHeight) {
             this.handleHeaderMouseDown(e);
@@ -96,12 +126,48 @@ export class MouseHandler {
     handleMouseMove = (e: MouseEvent) => {
         const { theme } = this.engine;
         const { isFilling, selection } = this.engine.store.getState();
+        const { scrollTop } = this.engine.viewport.getState();
         const canvas = e.target as HTMLCanvasElement;
 
         // Update hover position for tooltips
         this.engine.store.setState({
             hoverPosition: { x: e.offsetX, y: e.offsetY }
         });
+
+        // 0. Handle Row Selection Drag
+        if (this.isSelectingRows && this.rowSelectionStart !== -1) {
+             const gridY = e.offsetY - theme.headerHeight + scrollTop;
+             const rowIndex = Math.floor(gridY / theme.rowHeight);
+             const rowCount = this.engine.model.getRowCount();
+             const targetRow = Math.max(0, Math.min(rowCount - 1, rowIndex));
+             
+             const colCount = this.engine.model.getColumns().length;
+             const range = {
+                 start: { col: 0, row: Math.min(this.rowSelectionStart, targetRow) },
+                 end: { col: colCount - 1, row: Math.max(this.rowSelectionStart, targetRow) }
+             };
+             
+             const { selection } = this.engine.store.getState();
+             
+             if (selection && selection.ranges.length > 0) {
+                 // Update last range
+                 const otherRanges = selection.ranges.slice(0, selection.ranges.length - 1);
+                 this.engine.store.setState({
+                     selection: {
+                         primary: selection.primary,
+                         ranges: [...otherRanges, range]
+                     }
+                 });
+             } else {
+                 this.engine.store.setState({
+                     selection: {
+                         primary: { col: 0, row: this.rowSelectionStart },
+                         ranges: [range]
+                     }
+                 });
+             }
+             return;
+        }
 
         // 1. Handle Column Resizing
         if (this.isResizing) {
@@ -131,7 +197,14 @@ export class MouseHandler {
         }
 
         // 3. Handle Cursor Styling
-        if (e.offsetY < theme.headerHeight) {
+        if (e.offsetX < theme.rowHeaderWidth && e.offsetY > theme.headerHeight) {
+             const actionX = theme.rowHeaderWidth - 18;
+             if (e.offsetX >= actionX - 5 && e.offsetX <= actionX + 19) {
+                 canvas.style.cursor = 'pointer';
+             } else {
+                 canvas.style.cursor = 'default';
+             }
+        } else if (e.offsetY < theme.headerHeight) {
             const { colIndex, onEdge } = this.getHeaderAt(e.offsetX);
             
             if (onEdge) {
@@ -168,6 +241,10 @@ export class MouseHandler {
     handleMouseUp = (e: MouseEvent) => {
         const { isFilling, selection, fillRange } = this.engine.store.getState();
         const { theme } = this.engine;
+
+        // Reset Row Selection Drag
+        this.isSelectingRows = false;
+        this.rowSelectionStart = -1;
 
         // Handle Reorder Drop
         if (this.isReordering && this.reorderCandidate) {
@@ -582,11 +659,11 @@ export class MouseHandler {
         if (selection && fillRange && fillRange.ranges.length > 0) {
             const source = selection.ranges[selection.ranges.length - 1];
             const target = fillRange.ranges[0];
-            
+
             // Use GridEngine's fillData for optimistic update + backend sync
             try {
                 await this.engine.fillData(source, target);
-                this.engine.store.setState({
+            this.engine.store.setState({
                     selection: { primary: selection.primary, ranges: [target] }
                 });
             } catch (error) {

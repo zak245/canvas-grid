@@ -5,7 +5,7 @@
  * These support the config, adapters, and lifecycle systems.
  */
 
-import type { GridColumn, GridRow, CellValue, GridSelection, CellType } from './grid';
+import type { GridColumn, GridRow, CellValue, CellType } from './grid';
 
 // ==================== DATA OPERATIONS ====================
 

@@ -12,10 +12,9 @@
  * 4. Extensible - hooks and adapters for custom behavior
  */
 
-import type { GridColumn, GridRow, CellValue, CellType, CellFormat, GridTheme, GridSelection } from '../types/grid';
+import type { GridColumn, GridRow, CellValue, CellType, GridTheme, GridSelection } from '../types/grid';
 import type {
   ColumnSort,
-  ColumnFilter,
   ComparatorFn,
   ValidationResult,
   CellChange,
@@ -25,7 +24,7 @@ import type {
   BackendEndpoints,
   CellEditor,
   GridData,
-  FetchParams
+  // FetchParams - removed unused import
 } from '../types/platform';
 
 // ==================== MAIN CONFIG ====================
@@ -221,6 +220,7 @@ export interface LifecycleHooks {
   onRowUpdate?: (row: GridRow) => void;
   onBeforeRowDelete?: (rowId: string) => boolean;
   onRowDelete?: (rowId: string) => void;
+  onRowAction?: (rowIndex: number, actionId: string) => void; // Generic row action hook
   
   // Columns
   onBeforeColumnAdd?: (column: Partial<GridColumn>) => Partial<GridColumn> | false;
@@ -299,9 +299,6 @@ export const DEFAULT_CONFIG: GridConfig = {
       minWidth: 50,
       maxWidth: 600,
       defaults: {
-        editable: true,
-        sortable: true,
-        filterable: true,
         visible: true,
       },
     },

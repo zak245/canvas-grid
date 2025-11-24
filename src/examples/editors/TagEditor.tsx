@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { EditorProps } from '../../components/editors/TextEditor';
+import { EditorProps } from '../../types/grid';
 
 // Define the option shape
 export interface TagOption {
@@ -24,7 +24,6 @@ export const SAMPLE_TAGS: TagOption[] = [
 export const TagEditor: React.FC<EditorProps> = ({
     value,
     width,
-    height,
     onCommit,
     onCancel
 }) => {

@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from 'zustand';
 import { useGridEngine } from './useGridEngine';
+import { GridEngine } from '../engine/GridEngine';
 import type { GridColumn, GridRow } from '../types/grid';
 import type { GridConfig } from '../config/GridConfig';
-import type { ColumnSort } from '../types/platform';
-import { RowHeaders } from '../components/RowHeaders';
+// import type { ColumnSort } from '../types/platform'; // Removed unused import
 import { ColumnMenu } from '../components/ColumnMenu';
 import { AddColumnMenu } from '../components/AddColumnMenu';
 import { ColumnSettingsDrawer } from '../components/ColumnSettingsDrawer';
@@ -24,14 +24,12 @@ export const GridContainer: React.FC<GridContainerProps> = ({
     engine: externalEngine,
     columns = [],
     rows = [],
-    onColumnsUpdate,
     config,
     onAddColumnClick
 }) => {
     const { canvasRef, engine } = useGridEngine(externalEngine || config);
     const containerRef = React.useRef<HTMLDivElement>(null);
     const [scrollState, setScrollState] = useState({ scrollLeft: 0, scrollTop: 0 });
-    const [visibleRowIndices, setVisibleRowIndices] = useState<number[]>([]);
     
     // Subscribe to store for UI state (Single Source of Truth)
     const activeHeaderMenu = useStore(engine.store, (state) => state.activeHeaderMenu);
@@ -44,7 +42,6 @@ export const GridContainer: React.FC<GridContainerProps> = ({
     const allColumns = config ? engine.model.getColumns() : columns;
     const effectiveRows = config ? engine.model.getAllRows() : rows;
     const [dataVersion, setDataVersion] = useState(0);
-    const [sortState, setSortState] = useState<ColumnSort[]>([]);
 
     // Subscribe to data/sort changes
     useEffect(() => {
@@ -54,8 +51,8 @@ export const GridContainer: React.FC<GridContainerProps> = ({
             setDataVersion(v => v + 1);
         });
         
-        const unsubscribeSort = engine.subscribeToSortChange((sort) => {
-            setSortState(sort);
+        const unsubscribeSort = engine.subscribeToSortChange(() => {
+            // No-op, just trigger re-render via dataVersion if needed
         });
 
         return () => {
@@ -99,16 +96,6 @@ export const GridContainer: React.FC<GridContainerProps> = ({
                 scrollLeft: viewportState.scrollLeft,
                 scrollTop: viewportState.scrollTop
             });
-
-            const visibleRange = engine.viewport.calculateVisibleRange(
-                engine.model.getAllRows(),
-                engine.model.getVisibleColumns()
-            );
-            const indices = Array.from(
-                { length: visibleRange.rowEndIndex - visibleRange.rowStartIndex + 1 },
-                (_, i) => visibleRange.rowStartIndex + i
-            );
-            setVisibleRowIndices(indices);
         }, 16);
         return () => clearInterval(interval);
     }, [engine, dataVersion]);
@@ -119,7 +106,23 @@ export const GridContainer: React.FC<GridContainerProps> = ({
             e.preventDefault();
 
             // Freeze scroll if menu is open
-            if (activeHeaderMenu || activeAddColumnMenu || editingHeader || activeColumnSettings || editingCell) {
+            // For editingCell, check if the editor allows scroll
+            let shouldFreeze = !!(activeHeaderMenu || activeAddColumnMenu || editingHeader || activeColumnSettings);
+            
+            if (!shouldFreeze && editingCell) {
+                const columns = engine.model.getVisibleColumns();
+                const column = columns[editingCell.col];
+                if (column) {
+                    // Default to true (lock) unless explicitly false
+                    if (column.editor?.lockScroll !== false) {
+                        shouldFreeze = true;
+                    }
+                } else {
+                    shouldFreeze = true;
+                }
+            }
+
+            if (shouldFreeze) {
                 return;
             }
 
@@ -164,23 +167,6 @@ export const GridContainer: React.FC<GridContainerProps> = ({
 
     return (
         <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-white">
-            {/* Top-left corner */}
-            <div
-                className="absolute top-0 left-0 bg-gray-50 border-r border-b border-gray-200 z-20"
-                style={{ width: `${engine.theme.rowHeaderWidth}px`, height: `${engine.theme.headerHeight}px` }}
-            />
-
-            {/* Row Headers - STILL REACT FOR NOW, BUT CLEANER */}
-            <div className="absolute top-0 left-0 bottom-0 z-10">
-                <RowHeaders
-                    visibleRowIndices={visibleRowIndices}
-                    scrollTop={scrollState.scrollTop}
-                    rowHeight={engine.theme.rowHeight}
-                    headerHeight={engine.theme.headerHeight}
-                    rowHeaderWidth={engine.theme.rowHeaderWidth}
-                />
-            </div>
-
             {/* Canvas Grid */}
             <canvas ref={canvasRef} className="block touch-none" />
 
@@ -206,6 +192,7 @@ export const GridContainer: React.FC<GridContainerProps> = ({
                     onClose={handleCloseAddMenu}
                     onToggleVisibility={(id, visible) => engine.setColumnVisibility(id, visible)}
                     onCreateNew={handleCreateColumn}
+                    onAddColumnClick={onAddColumnClick}
                 />
             )}
 

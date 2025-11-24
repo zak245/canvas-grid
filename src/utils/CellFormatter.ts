@@ -1,14 +1,11 @@
-import type { GridCell, GridColumn, CellType, CellFormat } from '../types/grid';
+import type { GridCell, GridColumn, CellFormat } from '../types/grid';
 
 /**
  * CellFormatter - Handles formatting of cell values based on type
  * Includes caching for performance on 60fps rendering
  */
 export class CellFormatter {
-    private static numberFormat = new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
-    });
+    // Removed unused private static numberFormat
 
     private static currencyFormat = new Intl.NumberFormat('en-US', {
         style: 'currency',
@@ -32,6 +29,13 @@ export class CellFormatter {
         // Check cache first
         if (cell._cached !== undefined) {
             return this.applyOverflow(cell._cached, maxWidth);
+        }
+
+        // Custom Formatter from Column
+        if (column.formatter) {
+            const formatted = column.formatter(cell.value);
+            cell._cached = formatted;
+            return this.applyOverflow(formatted, maxWidth);
         }
 
         const value = cell.value;

@@ -33,7 +33,7 @@ export function EnrichmentProgress({
             enableLogs: false,
         });
 
-        let pollInterval: NodeJS.Timeout;
+        let pollInterval: any; // Using any to avoid NodeJS.Timeout issue in browser env
 
         const pollStatus = async () => {
             try {

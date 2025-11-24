@@ -1,13 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-
-export interface EditorProps {
-    value: any;
-    width: number;
-    height: number;
-    onCommit: (newValue: any, shouldMove?: boolean) => void;
-    onCancel: () => void;
-    className?: string;
-}
+import { EditorProps } from '../../types/grid';
 
 export const TextEditor: React.FC<EditorProps> = ({
     value,
@@ -56,4 +48,3 @@ export const TextEditor: React.FC<EditorProps> = ({
         />
     );
 };
-

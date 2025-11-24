@@ -26,9 +26,16 @@ export class CanvasRenderer {
 
         // 2. Calculate Visible Range
         const allRows = engine.model.getAllRows();
+        // We sort here as a safeguard, though GridModel.getVisibleColumns() should be sorted.
+        const allVisibleColumns = [...engine.model.getVisibleColumns()].sort((a, b) => {
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
+            return 0;
+        });
+        
         const visibleRange = engine.viewport.calculateVisibleRange(
             allRows,
-            engine.model.getVisibleColumns()
+            allVisibleColumns
         );
 
         const { visibleRows, visibleColumns, pinnedColumns, rowStartIndex, scrollableGridX } = visibleRange;
@@ -44,8 +51,6 @@ export class CanvasRenderer {
         let y = rowStartIndex * theme.rowHeight;
         for (const row of visibleRows) {
                 // Calculate initial X for this pass
-                // If scrollable, startX is the calculated GridX of the first visible column
-                // If frozen, startX is 0
                 let x = isScrollable ? scrollableGridX : 0; 
 
                 for (const col of columns) {
@@ -91,12 +96,10 @@ export class CanvasRenderer {
         // 3. Draw Scrollable Data Grid (Layer 1)
         if (visibleColumns.length > 0) {
             ctx.save();
-            // Clip to right of frozen width
             ctx.beginPath();
             ctx.rect(theme.rowHeaderWidth + frozenWidth, theme.headerHeight, width - theme.rowHeaderWidth - frozenWidth, height - theme.headerHeight);
             ctx.clip();
             
-            // Translate: Move up for header, and shift left by scrollLeft
             ctx.translate(-scrollLeft + theme.rowHeaderWidth, -scrollTop + theme.headerHeight);
             
             drawColumns(visibleColumns, true);
@@ -110,10 +113,8 @@ export class CanvasRenderer {
         // 4. Draw Frozen Data Grid (Layer 2 - Overlay)
         if (pinnedColumns.length > 0) {
             ctx.save();
-            // Translate: No scrollLeft
             ctx.translate(theme.rowHeaderWidth, -scrollTop + theme.headerHeight);
             
-            // Clear background for frozen columns to cover scrollable content
             const totalFrozenHeight = visibleRows.length * theme.rowHeight;
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, rowStartIndex * theme.rowHeight, frozenWidth, totalFrozenHeight);
@@ -148,10 +149,13 @@ export class CanvasRenderer {
         this.drawSelection(ctx, engine, frozenWidth);
 
         // 6. Draw Fill Range
-        // this.drawFillRange(ctx, engine, frozenWidth); // TODO: Update fill range too
+        this.drawFillRange(ctx, engine, frozenWidth);
 
-        // 7. Draw Canvas Headers (NEW)
+        // 7. Draw Canvas Headers
         this.drawHeaders(ctx, engine, frozenWidth);
+
+        // 7b. Draw Row Headers
+        this.drawRowHeaders(ctx, engine, visibleRows, rowStartIndex);
 
         // 8. Draw Error Tooltip
         this.drawErrorTooltip(ctx, engine);
@@ -200,7 +204,6 @@ export class CanvasRenderer {
         }
     }
     
-    // New Draw Selection Method to handle split
     private drawSelection(ctx: CanvasRenderingContext2D, engine: GridEngine, frozenWidth: number) {
         const selection = engine.store.getState().selection;
         if (!selection) return;
@@ -217,16 +220,18 @@ export class CanvasRenderer {
                 ctx.clip();
             ctx.translate(theme.rowHeaderWidth - scrollLeft, theme.headerHeight - scrollTop);
             } else {
-                // Frozen
                 ctx.beginPath();
                 ctx.rect(theme.rowHeaderWidth, theme.headerHeight, frozenWidth, height - theme.headerHeight);
                 ctx.clip();
                 ctx.translate(theme.rowHeaderWidth, theme.headerHeight - scrollTop);
             }
 
-            const visibleCols = engine.model.getVisibleColumns(); // All visible
-
-            for (const range of selection.ranges) {
+            const visibleCols = engine.model.getVisibleColumns(); // Always sorted now
+            
+            for (let i = 0; i < selection.ranges.length; i++) {
+                const range = selection.ranges[i];
+                const isLast = i === selection.ranges.length - 1;
+                
                 let rangeStartX = -1;
                 let rangeEndX = -1;
                 
@@ -241,7 +246,6 @@ export class CanvasRenderer {
                             rangeEndX = currentX + col.width;
                         }
                     }
-                    
                     currentX += col.width;
                 }
                 
@@ -256,6 +260,27 @@ export class CanvasRenderer {
                 ctx.strokeStyle = theme.selectionBorderColor;
                 ctx.lineWidth = 2;
                     ctx.strokeRect(rangeStartX, startY, selWidth, selHeight);
+                    
+                    // Draw Fill Handle (Bottom-Right)
+                    // Only for the last range and if not currently filling
+                    if (isLast && !engine.store.getState().isFilling) {
+                        const allColumns = engine.model.getColumns();
+                        const endCol = allColumns[range.end.col];
+                        if (endCol) {
+                            const endColIsPinned = !!endCol.pinned;
+                            // Check if the end of the selection belongs to this layer
+                            if ((isScrollable && !endColIsPinned) || (!isScrollable && endColIsPinned)) {
+                    const handleSize = 6;
+                                const handleX = rangeEndX - handleSize / 2;
+                                const handleY = startY + selHeight - handleSize / 2;
+
+                    ctx.fillStyle = theme.selectionBorderColor;
+                    ctx.fillRect(handleX, handleY, handleSize, handleSize);
+                                ctx.fillStyle = '#ffffff';
+                                ctx.fillRect(handleX + 1, handleY + 1, handleSize - 2, handleSize - 2); // Inner white
+                            }
+                        }
+                    }
                 }
             }
             ctx.restore();
@@ -263,6 +288,72 @@ export class CanvasRenderer {
         
         drawSelectionPart(true);
         drawSelectionPart(false);
+    }
+
+    private drawFillRange(ctx: CanvasRenderingContext2D, engine: GridEngine, frozenWidth: number) {
+        const fillRange = engine.store.getState().fillRange;
+        if (!fillRange) return;
+        
+        const { theme } = engine;
+        const { scrollLeft, scrollTop, width, height } = engine.viewport.getState();
+        
+        const drawFillRangePart = (isScrollable: boolean) => {
+            ctx.save();
+            
+            if (isScrollable) {
+                ctx.beginPath();
+                ctx.rect(theme.rowHeaderWidth + frozenWidth, theme.headerHeight, width - theme.rowHeaderWidth - frozenWidth, height - theme.headerHeight);
+                ctx.clip();
+            ctx.translate(theme.rowHeaderWidth - scrollLeft, theme.headerHeight - scrollTop);
+            } else {
+                ctx.beginPath();
+                ctx.rect(theme.rowHeaderWidth, theme.headerHeight, frozenWidth, height - theme.headerHeight);
+                ctx.clip();
+                ctx.translate(theme.rowHeaderWidth, theme.headerHeight - scrollTop);
+            }
+
+            const visibleCols = engine.model.getVisibleColumns();
+            
+            for (const range of fillRange.ranges) {
+                let rangeStartX = -1;
+                let rangeEndX = -1;
+                
+                let currentX = 0;
+                for (const col of visibleCols) {
+                    const belongsToLayer = isScrollable ? !col.pinned : col.pinned;
+                    const trueIndex = engine.model.getColumns().findIndex(c => c.id === col.id);
+                    
+                    if (trueIndex >= range.start.col && trueIndex <= range.end.col) {
+                        if (belongsToLayer) {
+                            if (rangeStartX === -1) rangeStartX = currentX;
+                            rangeEndX = currentX + col.width;
+                        }
+                    }
+                    currentX += col.width;
+                }
+                
+                if (rangeStartX !== -1) {
+                    const startY = range.start.row * theme.rowHeight;
+                    const selWidth = rangeEndX - rangeStartX;
+                    const selHeight = (range.end.row - range.start.row + 1) * theme.rowHeight;
+
+                    // Dashed Border for Fill Range
+                    ctx.strokeStyle = theme.selectionBorderColor;
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([4, 4]);
+                    ctx.strokeRect(rangeStartX, startY, selWidth, selHeight);
+                    ctx.setLineDash([]);
+                    
+                    // Light Fill
+                    ctx.fillStyle = 'rgba(59, 130, 246, 0.05)';
+                    ctx.fillRect(rangeStartX, startY, selWidth, selHeight);
+                }
+            }
+            ctx.restore();
+        };
+        
+        drawFillRangePart(true);
+        drawFillRangePart(false);
     }
 
     private drawIcon(ctx: CanvasRenderingContext2D, icon: string, x: number, y: number, size: number, color: string) {
@@ -367,6 +458,18 @@ export class CanvasRenderer {
             ctx.beginPath();
             ctx.moveTo(18, 16); ctx.lineTo(21, 16); ctx.lineTo(19.5, 19);
             ctx.fill();
+        } else if (icon === 'trash') {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(5, 5); ctx.lineTo(19, 5); // Lid line
+            ctx.moveTo(9, 5); ctx.lineTo(10, 3); ctx.lineTo(14, 3); ctx.lineTo(15, 5); // Lid handle
+            ctx.moveTo(7, 5); ctx.lineTo(8, 20); ctx.lineTo(16, 20); ctx.lineTo(17, 5); // Body
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(10, 8); ctx.lineTo(10, 17);
+            ctx.moveTo(14, 8); ctx.lineTo(14, 17);
+            ctx.stroke();
         }
         
         ctx.restore();
@@ -431,7 +534,7 @@ export class CanvasRenderer {
                     const typeIconSpace = 20;
                     const availableWidth = visualCol.width - (textPadding * 2) - menuIconSpace - actionIconSpace - typeIconSpace;
 
-            ctx.save();
+                    ctx.save();
                     ctx.beginPath();
                     ctx.rect(x + textPadding, 0, Math.max(0, availableWidth + typeIconSpace), theme.headerHeight);
                     ctx.clip();
@@ -617,6 +720,109 @@ export class CanvasRenderer {
                 
                 ctx.restore();
             }
+        }
+    }
+
+    private drawRowHeaders(ctx: CanvasRenderingContext2D, engine: GridEngine, visibleRows: GridRow[], rowStartIndex: number) {
+        const { theme } = engine;
+        const { height, scrollTop } = engine.viewport.getState();
+        const { hoverPosition } = engine.store.getState();
+        
+        const rowHeaderWidth = theme.rowHeaderWidth;
+        
+        // 0. Top-Left Corner (Header Junction)
+        ctx.fillStyle = '#f9fafb';
+        ctx.fillRect(0, 0, rowHeaderWidth, theme.headerHeight);
+        
+        ctx.beginPath();
+        ctx.moveTo(0, theme.headerHeight);
+        ctx.lineTo(rowHeaderWidth, theme.headerHeight);
+        ctx.strokeStyle = theme.borderColor;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // 1. Background & Border (Row Headers)
+        ctx.fillStyle = '#f9fafb';
+        ctx.fillRect(0, theme.headerHeight, rowHeaderWidth, height - theme.headerHeight);
+        
+        ctx.beginPath();
+        ctx.moveTo(rowHeaderWidth, theme.headerHeight);
+        ctx.lineTo(rowHeaderWidth, height);
+        ctx.strokeStyle = theme.borderColor;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // 2. Calculate Hovered Row (Only if mouse is inside row header area)
+        let hoveredRowIndex = -1;
+        if (hoverPosition && hoverPosition.x < rowHeaderWidth && hoverPosition.y > theme.headerHeight) {
+             hoveredRowIndex = Math.floor((hoverPosition.y - theme.headerHeight + scrollTop) / theme.rowHeight);
+        }
+
+        // 3. Draw Each Row Header
+        let y = (rowStartIndex * theme.rowHeight) - scrollTop + theme.headerHeight;
+        
+        for (let i = 0; i < visibleRows.length; i++) {
+            const rowIndex = rowStartIndex + i;
+            const isHovered = rowIndex === hoveredRowIndex;
+            const isSelected = engine.isRowSelected(rowIndex);
+
+            // Highlight background if Hovered or Selected
+            if (isHovered || isSelected) {
+                ctx.fillStyle = isSelected ? '#eff6ff' : '#f3f4f6'; // Light Blue or Light Gray
+                ctx.fillRect(0, y, rowHeaderWidth - 1, theme.rowHeight);
+            }
+
+            // Show controls if Hovered OR Selected
+            if (isHovered || isSelected) {
+                const cbSize = 14;
+                const cbX = (rowHeaderWidth - cbSize) / 2;
+                const cbY = y + (theme.rowHeight - cbSize) / 2;
+                
+                // Draw Checkbox
+                ctx.beginPath();
+                // Use rect if roundRect not supported (though standard now)
+                if (ctx.roundRect) {
+                    ctx.roundRect(cbX, cbY, cbSize, cbSize, 3);
+                } else {
+                    ctx.rect(cbX, cbY, cbSize, cbSize);
+                }
+                
+                if (isSelected) {
+                    ctx.fillStyle = theme.selectionBorderColor;
+                    ctx.fill();
+                    
+                    // Checkmark
+                    ctx.beginPath();
+                    ctx.moveTo(cbX + 3.5, cbY + 7);
+                    ctx.lineTo(cbX + 6, cbY + 9.5);
+                    ctx.lineTo(cbX + 10.5, cbY + 4);
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                } else {
+                    ctx.strokeStyle = '#d1d5db';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fill();
+                }
+
+                // Action Buttons (Only on Hover)
+                if (isHovered) {
+                     const actionX = rowHeaderWidth - 18;
+                     const actionY = y + (theme.rowHeight - 14) / 2;
+                     this.drawIcon(ctx, 'trash', actionX, actionY, 14, '#ef4444');
+                }
+            } else {
+                // Default: Row Number
+                ctx.fillStyle = '#9ca3af';
+                ctx.font = `${theme.fontSize}px ${theme.fontFamily}`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(String(rowIndex + 1), rowHeaderWidth / 2, y + theme.rowHeight / 2);
+            }
+
+            y += theme.rowHeight;
         }
     }
 

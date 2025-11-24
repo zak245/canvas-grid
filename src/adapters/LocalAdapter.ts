@@ -37,6 +37,9 @@ export class LocalAdapter implements DataAdapter {
   // ===== DATA FETCHING =====
   
   async fetchData(params: FetchParams): Promise<GridData> {
+    if (params) {
+      // no-op
+    }
     // For local mode, return all data
     // Use virtual indices if sorting is applied
     return {
@@ -154,7 +157,7 @@ export class LocalAdapter implements DataAdapter {
   async pinColumn(columnId: string, pin: 'left' | 'right' | null): Promise<void> {
     const column = this.data.columns.find(c => c.id === columnId);
     if (column) {
-      column.pinned = pin || undefined;
+      column.pinned = pin === 'left' || pin === 'right' ? true : undefined;
     }
   }
   

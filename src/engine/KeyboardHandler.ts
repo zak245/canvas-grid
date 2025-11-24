@@ -9,6 +9,10 @@ export class KeyboardHandler {
         if (!selection || !selection.primary) return;
 
         const { primary } = selection;
+        // @ts-ignore
+        if (!primary) return;
+
+        // @ts-ignore
         const { row, col } = primary;
         const rowCount = this.engine.model.getRowCount();
         const colCount = this.engine.model.getColumns().length;
@@ -329,6 +333,9 @@ export class KeyboardHandler {
 
         const selection = this.engine.store.getState().selection!;
         const { primary } = selection;
+        
+        if (!primary) return;
+
         const columns = this.engine.model.getColumns();
         const totalRows = this.engine.model.getRowCount();
 

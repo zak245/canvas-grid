@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Type, Hash, List, Sparkles } from 'lucide-react';
+import { X, Type, Hash, Sparkles } from 'lucide-react';
 import type { GridColumn } from '../types/grid';
 
 interface AddColumnModalProps {
