@@ -218,6 +218,19 @@ export class MouseHandler {
                     this.engine.autoResizeColumn(column.id);
                 }
             }
+        } else {
+            // Cell Double Click - Start Edit
+            const cell = this.getCellAt(e.offsetX, e.offsetY);
+            if (cell) {
+                 const visibleCols = this.engine.model.getVisibleColumns();
+                 const allCols = this.engine.model.getColumns();
+                 const trueColId = allCols[cell.col].id;
+                 const visibleIndex = visibleCols.findIndex(c => c.id === trueColId);
+                 
+                 if (visibleIndex !== -1) {
+                     this.engine.startEdit(cell.row, visibleIndex);
+                 }
+            }
         }
     };
 

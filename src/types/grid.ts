@@ -65,6 +65,15 @@ export interface GridColumn {
         icon: 'play' | 'sparkles' | 'refresh' | 'settings';
         tooltip?: string;
     };
+    editor?: ColumnEditorConfig;
+}
+
+export type EditorMode = 'inline' | 'drawer' | 'modal' | 'custom';
+
+export interface ColumnEditorConfig {
+    mode?: EditorMode;
+    component?: any; // Custom React component for 'custom' mode
+    options?: { label: string; value: any }[];
 }
 
 export interface GridRow {

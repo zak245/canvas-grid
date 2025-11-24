@@ -4,9 +4,10 @@ import { Search, Filter, ArrowUpDown, Plus, Download, Sparkles } from 'lucide-re
 interface ToolbarProps {
     onAddColumn: () => void;
     onAddRow?: () => void; // Kept in interface for compatibility but removed from UI
+    mode?: 'local' | 'backend'; // Display mode indicator
 }
 
-export const Toolbar: React.FC<ToolbarProps> = ({ onAddColumn }) => {
+export const Toolbar: React.FC<ToolbarProps> = ({ onAddColumn, mode }) => {
     return (
         <div className="h-14 border-b border-gray-200 bg-white flex items-center px-4 justify-between shrink-0 z-40 relative">
             <div className="flex items-center gap-4">
@@ -28,6 +29,20 @@ export const Toolbar: React.FC<ToolbarProps> = ({ onAddColumn }) => {
             </div>
 
             <div className="flex items-center gap-3">
+                {/* Mode Indicator */}
+                {mode && (
+                    <>
+                        <div className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            mode === 'backend' 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-blue-100 text-blue-800'
+                        }`}>
+                            {mode === 'backend' ? '🔌 Backend Mode' : '💾 Local Mode'}
+                        </div>
+                        <div className="h-6 w-px bg-gray-200 mx-1" />
+                    </>
+                )}
+
                 <button
                     onClick={onAddColumn}
                     className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-md border border-gray-200 transition-colors"

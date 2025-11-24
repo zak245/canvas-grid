@@ -6,14 +6,15 @@ interface AppShellProps {
     children: React.ReactNode;
     onAddColumn: () => void;
     onAddRow?: () => void;
+    mode?: 'local' | 'backend';
 }
 
-export const AppShell: React.FC<AppShellProps> = ({ children, onAddColumn, onAddRow }) => {
+export const AppShell: React.FC<AppShellProps> = ({ children, onAddColumn, onAddRow, mode }) => {
     return (
         <div className="flex w-screen h-screen bg-white overflow-hidden">
             <Sidebar />
             <div className="flex-1 flex flex-col h-full min-w-0">
-                <Toolbar onAddColumn={onAddColumn} onAddRow={onAddRow} />
+                <Toolbar onAddColumn={onAddColumn} onAddRow={onAddRow} mode={mode} />
                 <main className="flex-1 relative overflow-hidden">
                     {children}
                 </main>

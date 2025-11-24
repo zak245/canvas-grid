@@ -49,14 +49,24 @@ export class InputController {
     }
 
     private handleCopy = (e: ClipboardEvent) => {
+        if (this.isInputEvent(e)) return;
         this.keyboardHandler.onCopy(e);
     };
 
     private handleCut = (e: ClipboardEvent) => {
+        if (this.isInputEvent(e)) return;
         this.keyboardHandler.onCut(e);
     };
 
     private handlePaste = (e: ClipboardEvent) => {
+        if (this.isInputEvent(e)) return;
         this.keyboardHandler.onPaste(e);
     };
+
+    private isInputEvent(e: Event): boolean {
+        const target = e.target as HTMLElement;
+        return target.tagName === 'INPUT' || 
+               target.tagName === 'TEXTAREA' || 
+               target.isContentEditable;
+    }
 }

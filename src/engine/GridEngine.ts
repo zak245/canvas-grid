@@ -455,6 +455,61 @@ export class GridEngine {
     }
 
     /**
+     * Start editing a cell
+     */
+    startEdit(row: number, col: number) {
+        const visibleCols = this.model.getVisibleColumns();
+        const column = visibleCols[col];
+        if (!column) return;
+
+        // Check config (defaults)
+        // TODO: Check config.features.cells.enabled
+
+        // Check lifecycle
+        if (this.lifecycle.onBeforeCellEdit?.(row, column.id) === false) return;
+
+        // Check editor mode
+        const mode = column.editor?.mode || 'inline';
+
+        if (mode === 'drawer' || mode === 'modal') {
+             // External edit
+             const rows = this.model.getAllRows();
+             const cellValue = rows[row]?.cells.get(column.id)?.value;
+             this.lifecycle.onCellEditStart?.(row, column.id, cellValue);
+        } else {
+             // Inline / Custom Overlay
+             this.store.setState({ editingCell: { row, col } });
+             const rows = this.model.getAllRows();
+             const cellValue = rows[row]?.cells.get(column.id)?.value;
+             this.lifecycle.onCellEditStart?.(row, column.id, cellValue);
+        }
+    }
+
+    /**
+     * Stop editing
+     */
+    stopEdit(cancel: boolean = false) {
+        const { editingCell } = this.store.getState();
+        if (editingCell) {
+            const { row, col } = editingCell;
+            const visibleCols = this.model.getVisibleColumns();
+            const column = visibleCols[col];
+            
+            // Clean up
+            this.store.setState({ editingCell: null });
+            
+            // Focus canvas
+            this.canvas?.focus();
+            
+            if (column && !cancel) {
+                 const rows = this.model.getAllRows();
+                 const cellValue = rows[row]?.cells.get(column.id)?.value;
+                 this.lifecycle.onCellEditEnd?.(row, column.id, cellValue);
+            }
+        }
+    }
+
+    /**
      * Update a single cell
      */
     async updateCell(rowIndex: number, columnId: string, value: CellValue): Promise<void> {
@@ -789,6 +844,73 @@ export class GridEngine {
                 timestamp: Date.now(),
             });
             throw error;
+        }
+    }
+
+    /**
+     * Move selection relative to current primary cell
+     */
+    moveSelection(deltaRow: number, deltaCol: number) {
+        const { selection } = this.store.getState();
+        if (!selection || !selection.primary) return;
+
+        const { row, col } = selection.primary;
+        const rowCount = this.model.getRowCount();
+        const colCount = this.model.getColumns().length;
+
+        const newRow = Math.max(0, Math.min(rowCount - 1, row + deltaRow));
+        const newCol = Math.max(0, Math.min(colCount - 1, col + deltaCol));
+
+        if (newRow !== row || newCol !== col) {
+            this.store.setState({
+                selection: {
+                    primary: { row: newRow, col: newCol },
+                    ranges: [{ start: { row: newRow, col: newCol }, end: { row: newRow, col: newCol } }]
+                }
+            });
+            this.scrollToCell(newRow, newCol);
+        }
+    }
+
+    /**
+     * Scroll viewport to ensure cell is visible
+     */
+    scrollToCell(row: number, col: number) {
+        const { scrollTop, scrollLeft, width, height } = this.viewport.getState();
+        const { rowHeight, headerHeight, rowHeaderWidth } = this.theme;
+        const columns = this.model.getColumns();
+
+        const cellTop = row * rowHeight;
+        const cellBottom = cellTop + rowHeight;
+        
+        let cellLeft = 0;
+        for (let i = 0; i < col; i++) {
+            cellLeft += columns[i].width;
+        }
+        const cellRight = cellLeft + columns[col].width;
+
+        const viewportTop = scrollTop;
+        const viewportBottom = scrollTop + height - headerHeight;
+        const viewportLeft = scrollLeft;
+        const viewportRight = scrollLeft + width - rowHeaderWidth;
+
+        let newScrollTop = scrollTop;
+        let newScrollLeft = scrollLeft;
+
+        if (cellTop < viewportTop) {
+            newScrollTop = cellTop;
+        } else if (cellBottom > viewportBottom) {
+            newScrollTop = cellBottom - (height - headerHeight);
+        }
+
+        if (cellLeft < viewportLeft) {
+            newScrollLeft = cellLeft;
+        } else if (cellRight > viewportRight) {
+            newScrollLeft = cellRight - (width - rowHeaderWidth);
+        }
+
+        if (newScrollTop !== scrollTop || newScrollLeft !== scrollLeft) {
+            this.scroll(newScrollTop, newScrollLeft);
         }
     }
 

@@ -41,14 +41,17 @@ export class KeyboardHandler {
             }
             shouldPreventDefault = true;
         }
-        // Enter Navigation
+        // Enter: Start Editing
         else if (e.key === 'Enter') {
-            if (e.shiftKey) {
-                newRow = Math.max(0, row - 1);
-            } else {
-                newRow = Math.min(rowCount - 1, row + 1);
+            const visibleCols = this.engine.model.getVisibleColumns();
+            const allCols = this.engine.model.getColumns();
+            const trueColId = allCols[col].id;
+            const visibleIndex = visibleCols.findIndex(c => c.id === trueColId);
+            
+            if (visibleIndex !== -1) {
+                this.engine.startEdit(row, visibleIndex);
+                shouldPreventDefault = true;
             }
-            shouldPreventDefault = true;
         }
         // Home/End Keys
         else if (e.key === 'Home') {

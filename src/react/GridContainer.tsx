@@ -9,8 +9,10 @@ import { ColumnMenu } from '../components/ColumnMenu';
 import { AddColumnMenu } from '../components/AddColumnMenu';
 import { ColumnSettingsDrawer } from '../components/ColumnSettingsDrawer';
 import { HeaderRenameInput } from '../components/HeaderRenameInput';
+import { CellEditorOverlay } from '../components/CellEditorOverlay';
 
 interface GridContainerProps {
+    engine?: GridEngine;
     columns?: GridColumn[];
     rows?: GridRow[];
     onColumnsUpdate?: (columns: GridColumn[]) => void;
@@ -19,13 +21,14 @@ interface GridContainerProps {
 }
 
 export const GridContainer: React.FC<GridContainerProps> = ({
+    engine: externalEngine,
     columns = [],
     rows = [],
     onColumnsUpdate,
     config,
     onAddColumnClick
 }) => {
-    const { canvasRef, engine } = useGridEngine(config);
+    const { canvasRef, engine } = useGridEngine(externalEngine || config);
     const containerRef = React.useRef<HTMLDivElement>(null);
     const [scrollState, setScrollState] = useState({ scrollLeft: 0, scrollTop: 0 });
     const [visibleRowIndices, setVisibleRowIndices] = useState<number[]>([]);
@@ -35,6 +38,7 @@ export const GridContainer: React.FC<GridContainerProps> = ({
     const activeAddColumnMenu = useStore(engine.store, (state) => state.activeAddColumnMenu);
     const editingHeader = useStore(engine.store, (state) => state.editingHeader);
     const activeColumnSettings = useStore(engine.store, (state) => state.activeColumnSettings);
+    const editingCell = useStore(engine.store, (state) => state.editingCell);
     
     const effectiveColumns = config ? engine.model.getVisibleColumns() : columns;
     const allColumns = config ? engine.model.getColumns() : columns;
@@ -115,7 +119,7 @@ export const GridContainer: React.FC<GridContainerProps> = ({
             e.preventDefault();
 
             // Freeze scroll if menu is open
-            if (activeHeaderMenu || activeAddColumnMenu || editingHeader || activeColumnSettings) {
+            if (activeHeaderMenu || activeAddColumnMenu || editingHeader || activeColumnSettings || editingCell) {
                 return;
             }
 
@@ -131,7 +135,7 @@ export const GridContainer: React.FC<GridContainerProps> = ({
         const canvas = canvasRef.current;
         if (canvas) canvas.addEventListener('wheel', handleWheel, { passive: false });
         return () => canvas?.removeEventListener('wheel', handleWheel);
-    }, [engine, canvasRef, effectiveColumns, effectiveRows, activeHeaderMenu, activeAddColumnMenu, editingHeader, activeColumnSettings]); // Added dependencies
+    }, [engine, canvasRef, effectiveColumns, effectiveRows, activeHeaderMenu, activeAddColumnMenu, editingHeader, activeColumnSettings, editingCell]); // Added dependencies
 
     // Menu Handlers
     const handleMenuAction = (action: string, columnId: string) => {
@@ -247,6 +251,8 @@ export const GridContainer: React.FC<GridContainerProps> = ({
                     />
                 );
             })()}
+
+            <CellEditorOverlay engine={engine} containerRef={containerRef} />
         </div>
     );
 };

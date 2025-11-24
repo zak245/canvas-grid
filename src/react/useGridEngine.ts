@@ -2,11 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { GridEngine } from '../engine/GridEngine';
 import type { GridConfig } from '../config/GridConfig';
 
-export function useGridEngine(config?: Partial<GridConfig>) {
+export function useGridEngine(configOrEngine?: Partial<GridConfig> | GridEngine) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [engine] = useState(() => {
-        // NEW: Use config if provided, otherwise legacy mode
-        return config ? new GridEngine(config) : new GridEngine();
+        if (configOrEngine instanceof GridEngine) {
+             console.log('[useGridEngine] Reusing existing engine');
+             return configOrEngine;
+        }
+        console.log('[useGridEngine] Creating NEW engine');
+        return configOrEngine ? new GridEngine(configOrEngine) : new GridEngine();
     });
 
     useEffect(() => {

@@ -17,6 +17,7 @@ export interface BackendAdapterConfig {
 
 export class BackendAdapter implements DataAdapter {
   private config: BackendAdapterConfig;
+  private rowIdCache: Map<number, string> = new Map(); // Cache rowIndex -> rowId mapping
   
   constructor(config: BackendAdapterConfig) {
     this.config = {
@@ -54,9 +55,24 @@ export class BackendAdapter implements DataAdapter {
   }
 
   private transformRowFromBackend(row: any): GridRow {
+    // Transform plain values to GridCell objects
+    const cellsMap = new Map();
+    Object.entries(row.cells || {}).forEach(([columnId, value]) => {
+      cellsMap.set(columnId, {
+        value: value,  // Wrap plain value in GridCell object
+      });
+    });
+    
+    console.log('[BackendAdapter] Transforming row:', {
+      rowId: row.id,
+      cellsObject: row.cells,
+      cellsMapSize: cellsMap.size,
+      firstCellTransformed: cellsMap.values().next().value,
+    });
+    
     return {
       id: row.id,
-      cells: new Map(Object.entries(row.cells || {})),
+      cells: cellsMap,
     };
   }
 
@@ -81,9 +97,29 @@ export class BackendAdapter implements DataAdapter {
       `/grids/${this.config.gridId}/data?${queryParams.toString()}`
     );
 
+    console.log('[BackendAdapter] Received data from API:', {
+      totalRows: data.totalRows,
+      rowCount: data.rows.length,
+      firstRow: data.rows[0],
+    });
+
+    const transformedRows = data.rows.map((row: any) => this.transformRowFromBackend(row));
+    
+    // Cache rowId mappings for efficient cell updates (additive - don't overwrite)
+    const startIndex = (data.page - 1) * data.pageSize;
+    transformedRows.forEach((row, idx) => {
+      this.rowIdCache.set(startIndex + idx, row.id);
+    });
+    
+    console.log('[BackendAdapter] Transformed rows:', {
+      count: transformedRows.length,
+      firstTransformed: transformedRows[0],
+      cacheSize: this.rowIdCache.size,
+    });
+
     return {
       columns: data.columns,
-      rows: data.rows.map((row: any) => this.transformRowFromBackend(row)),
+      rows: transformedRows,
       totalRows: data.totalRows,
       page: data.page,
       pageSize: data.pageSize,
@@ -209,10 +245,26 @@ export class BackendAdapter implements DataAdapter {
   // ===== CELL OPERATIONS =====
 
   async updateCell(rowIndex: number, columnId: string, value: CellValue): Promise<void> {
-    // Note: Backend uses rowId, not rowIndex
-    // We'll need to track rowId<->rowIndex mapping in the adapter or pass rowId directly
-    // For now, this is a limitation - we should enhance this
-    console.warn('updateCell requires rowId, not rowIndex - use bulkUpdateCells instead');
+    // Use cached rowId mapping
+    const rowId = this.rowIdCache.get(rowIndex);
+    
+    if (!rowId) {
+      console.warn(`[BackendAdapter] Row ${rowIndex} not in cache (cache has ${this.rowIdCache.size} entries)`);
+      // Fallback: fetch the specific page containing this row
+      const pageSize = 50; // Match default page size
+      const page = Math.floor(rowIndex / pageSize) + 1;
+      const data = await this.fetchData({ page, pageSize });
+      const localIndex = rowIndex % pageSize;
+      const row = data.rows[localIndex];
+      if (!row) {
+        throw new Error(`Row at index ${rowIndex} not found`);
+      }
+      await this.updateCellByRowId(row.id, columnId, value);
+      return;
+    }
+
+    console.log(`[BackendAdapter] Updating cell for row ${rowIndex} (${rowId}), column ${columnId}`);
+    await this.updateCellByRowId(rowId, columnId, value);
   }
 
   async updateCellByRowId(rowId: string, columnId: string, value: CellValue): Promise<void> {
