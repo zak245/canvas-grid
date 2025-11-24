@@ -40,7 +40,9 @@ router.get('/grids/:gridId/data', async (req: Request, res: Response) => {
     const { gridId } = req.params;
     const page = parseInt(req.query.page as string) || 1;
     const pageSize = parseInt(req.query.pageSize as string) || 100;
-    const skip = (page - 1) * pageSize;
+    // Cap at 100k rows per request to prevent memory issues
+    const cappedPageSize = Math.min(pageSize, 100000);
+    const skip = (page - 1) * cappedPageSize;
 
     const grid = await Grid.findById(gridId);
     if (!grid) {
@@ -51,7 +53,7 @@ router.get('/grids/:gridId/data', async (req: Request, res: Response) => {
     const rows = await Row.find({ gridId })
       .sort({ position: 1 })
       .skip(skip)
-      .limit(pageSize)
+      .limit(cappedPageSize)
       .lean();
 
     // Transform rows to match frontend format
@@ -65,7 +67,7 @@ router.get('/grids/:gridId/data', async (req: Request, res: Response) => {
       rows: transformedRows,
       totalRows: grid.totalRows,
       page,
-      pageSize,
+      pageSize: cappedPageSize,
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -385,20 +387,52 @@ router.post('/grids/:gridId/cells/bulk-update', async (req: Request, res: Respon
     const { gridId } = req.params;
     const { updates } = req.body; // [{ rowId, columnId, value }, ...]
 
+    // Group updates by rowId for efficiency
+    const updatesByRow = new Map<string, Record<string, any>>();
     for (const update of updates) {
-      await Row.updateOne(
-        { gridId, rowId: update.rowId },
-        { 
-          $set: { 
-            [`cells.${update.columnId}`]: update.value,
-            'metadata.updatedAt': new Date(),
-          }
-        }
-      );
+      if (!updatesByRow.has(update.rowId)) {
+        updatesByRow.set(update.rowId, {});
+      }
+      updatesByRow.get(update.rowId)![update.columnId] = update.value;
     }
 
-    res.json({ success: true });
+    // Update each row once with all its cell changes
+    for (const [rowId, cellUpdates] of updatesByRow.entries()) {
+      const row = await Row.findOne({ gridId, rowId });
+      if (!row) {
+        console.warn(`Row ${rowId} not found for bulk update`);
+        continue;
+      }
+
+      // Handle both Map and plain object cases (same as single cell update)
+      if (row.cells instanceof Map) {
+        Object.entries(cellUpdates).forEach(([key, value]) => {
+          row.cells.set(key, value);
+        });
+      } else {
+        const cellsObj = row.cells ? Object.fromEntries(Object.entries(row.cells)) : {};
+        Object.assign(cellsObj, cellUpdates);
+        row.cells = cellsObj as any;
+      }
+      
+      // Update metadata
+      if (row.metadata instanceof Map) {
+        row.metadata.set('updatedAt', new Date().toISOString());
+      } else {
+        const metadataObj = row.metadata ? Object.fromEntries(Object.entries(row.metadata)) : {};
+        metadataObj.updatedAt = new Date().toISOString();
+        row.metadata = metadataObj as any;
+      }
+      
+      row.markModified('cells');
+      row.markModified('metadata');
+      await row.save();
+    }
+
+    console.log(`✅ Bulk updated ${updates.length} cells across ${updatesByRow.size} rows`);
+    res.json({ success: true, updatedCells: updates.length, updatedRows: updatesByRow.size });
   } catch (error: any) {
+    console.error('Bulk update error:', error);
     res.status(500).json({ error: error.message });
   }
 });

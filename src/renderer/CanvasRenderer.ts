@@ -1,5 +1,6 @@
 import { GridEngine } from '../engine/GridEngine';
 import { CellFormatter } from '../utils/CellFormatter';
+import { GridRow, GridColumn } from '../types/grid';
 
 export class CanvasRenderer {
     private engine: GridEngine;
@@ -30,48 +31,44 @@ export class CanvasRenderer {
             engine.model.getVisibleColumns()
         );
 
-        const { visibleRows, visibleColumns, rowStartIndex, colStartIndex } = visibleRange;
+        const { visibleRows, visibleColumns, pinnedColumns, rowStartIndex, scrollableGridX } = visibleRange;
 
-        // 3. Draw Data Grid (scrolled content)
-        ctx.save();
-        // Translate for data rows: move up by headerHeight + scrollTop
-        ctx.translate(-scrollLeft + theme.rowHeaderWidth, -scrollTop + theme.headerHeight);
+        // Calculate Frozen Width
+        let frozenWidth = 0;
+        for (const col of pinnedColumns) {
+            frozenWidth += col.width;
+        }
 
-        // Draw Rows
+        // Helper to draw a set of columns
+        const drawColumns = (columns: typeof visibleColumns, isScrollable: boolean) => {
         let y = rowStartIndex * theme.rowHeight;
         for (const row of visibleRows) {
-            // Draw Cells
-            let x = 0;
+                // Calculate initial X for this pass
+                // If scrollable, startX is the calculated GridX of the first visible column
+                // If frozen, startX is 0
+                let x = isScrollable ? scrollableGridX : 0; 
 
-            // Calculate x offset for visible columns
-            for (let i = 0; i < colStartIndex; i++) {
-                x += engine.model.getVisibleColumns()[i]?.width || 0;
-            }
-
-            for (const col of visibleColumns) {
+                for (const col of columns) {
                 const cell = row.cells.get(col.id);
 
                 // Border
                 ctx.strokeStyle = theme.gridLineColor;
                 ctx.strokeRect(x, y, col.width, theme.rowHeight);
 
-                // Error indication - red background tint for type mismatches
+                    // Error indication
                 if (cell?.error) {
-                    ctx.fillStyle = 'rgba(254, 226, 226, 0.5)'; // Light red tint
+                        ctx.fillStyle = 'rgba(254, 226, 226, 0.5)';
                     ctx.fillRect(x, y, col.width, theme.rowHeight);
-
-                    // Red border for error cells
-                    ctx.strokeStyle = '#ef4444'; // Red-500
+                        ctx.strokeStyle = '#ef4444';
                     ctx.lineWidth = 2;
                     ctx.strokeRect(x + 1, y + 1, col.width - 2, theme.rowHeight - 2);
-                    ctx.lineWidth = 1; // Reset
+                        ctx.lineWidth = 1;
                 }
 
-                // Text - format using CellFormatter
+                    // Text
                 const displayValue = CellFormatter.format(cell, col, col.width - 16);
-
                 if (displayValue) {
-                    ctx.fillStyle = cell?.error ? '#dc2626' : (cell?.style?.color || '#000'); // Red text for errors
+                        ctx.fillStyle = cell?.error ? '#dc2626' : (cell?.style?.color || '#000');
                     ctx.font = `${theme.fontSize}px ${theme.fontFamily}`;
                     ctx.textBaseline = 'middle';
                     ctx.textAlign = cell?.style?.align || 'left';
@@ -89,77 +86,160 @@ export class CanvasRenderer {
             }
             y += theme.rowHeight;
         }
+        };
 
-        // NEW: Draw "+ Add Row" Ghost Row at bottom
+        // 3. Draw Scrollable Data Grid (Layer 1)
+        if (visibleColumns.length > 0) {
+            ctx.save();
+            // Clip to right of frozen width
+            ctx.beginPath();
+            ctx.rect(theme.rowHeaderWidth + frozenWidth, theme.headerHeight, width - theme.rowHeaderWidth - frozenWidth, height - theme.headerHeight);
+            ctx.clip();
+            
+            // Translate: Move up for header, and shift left by scrollLeft
+            ctx.translate(-scrollLeft + theme.rowHeaderWidth, -scrollTop + theme.headerHeight);
+            
+            drawColumns(visibleColumns, true);
+            
+            // Draw "+ Add Row" Ghost Row (Scrollable part)
+            this.drawAddRowGhost(ctx, engine, visibleRows, rowStartIndex, visibleColumns, true, scrollableGridX);
+
+            ctx.restore();
+        }
+
+        // 4. Draw Frozen Data Grid (Layer 2 - Overlay)
+        if (pinnedColumns.length > 0) {
+            ctx.save();
+            // Translate: No scrollLeft
+            ctx.translate(theme.rowHeaderWidth, -scrollTop + theme.headerHeight);
+            
+            // Clear background for frozen columns to cover scrollable content
+            const totalFrozenHeight = visibleRows.length * theme.rowHeight;
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, rowStartIndex * theme.rowHeight, frozenWidth, totalFrozenHeight);
+            
+            drawColumns(pinnedColumns, false);
+            
+            // Draw "+ Add Row" Ghost Row (Frozen part)
+            this.drawAddRowGhost(ctx, engine, visibleRows, rowStartIndex, pinnedColumns, false, 0);
+
+            ctx.restore();
+            
+            // Draw Drop Shadow for Freeze Line (Gradient)
+            ctx.save();
+            ctx.translate(theme.rowHeaderWidth, theme.headerHeight);
+            
+            ctx.beginPath();
+            ctx.moveTo(frozenWidth, 0);
+            ctx.lineTo(frozenWidth, height - theme.headerHeight);
+            ctx.strokeStyle = '#e5e7eb';
+            ctx.stroke();
+            
+            const gradient = ctx.createLinearGradient(frozenWidth, 0, frozenWidth + 6, 0);
+            gradient.addColorStop(0, 'rgba(0, 0, 0, 0.05)');
+            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(frozenWidth, 0, 6, height - theme.headerHeight);
+
+        ctx.restore();
+        }
+
+        // 5. Draw Selection
+        this.drawSelection(ctx, engine, frozenWidth);
+
+        // 6. Draw Fill Range
+        // this.drawFillRange(ctx, engine, frozenWidth); // TODO: Update fill range too
+
+        // 7. Draw Canvas Headers (NEW)
+        this.drawHeaders(ctx, engine, frozenWidth);
+
+        // 8. Draw Error Tooltip
+        this.drawErrorTooltip(ctx, engine);
+    }
+
+    // Helper for Add Row Ghost
+    private drawAddRowGhost(
+        ctx: CanvasRenderingContext2D, 
+        engine: GridEngine, 
+        visibleRows: GridRow[], 
+        rowStartIndex: number,
+        columns: GridColumn[],
+        isScrollable: boolean,
+        startX: number
+    ) {
+        const { theme } = engine;
+        const { scrollTop, height, scrollLeft } = engine.viewport.getState();
         const totalRows = engine.model.getRowCount();
+        
         if (rowStartIndex + visibleRows.length >= totalRows) {
             const addRowY = totalRows * theme.rowHeight;
-            
-            // Only draw if visible
             if (addRowY < scrollTop + height) {
-                let x = 0;
-                // Calculate x offset for visible columns
-                for (let i = 0; i < colStartIndex; i++) {
-                    x += engine.model.getVisibleColumns()[i]?.width || 0;
-                }
-
-                ctx.save();
+                let x = startX;
                 
-                for (const col of visibleColumns) {
-                    // Ghost Cell Background
+                for (const col of columns) {
                     ctx.fillStyle = '#f9fafb'; 
                     ctx.fillRect(x, addRowY, col.width, theme.rowHeight);
-                    
-                    // Ghost Cell Border
                     ctx.strokeStyle = theme.gridLineColor;
                     ctx.strokeRect(x, addRowY, col.width, theme.rowHeight);
-                    
                     x += col.width;
                 }
                 
-                // Draw Sticky Text
-                ctx.fillStyle = '#6b7280';
-                ctx.font = `${theme.fontSize}px ${theme.fontFamily}`;
-                ctx.textAlign = 'left';
-                ctx.textBaseline = 'middle';
+                const hasPinned = engine.model.getVisibleColumns().some(c => c.pinned);
+                const shouldDrawText = (!isScrollable && hasPinned) || (isScrollable && !hasPinned);
                 
-                // Keep text visible on left edge
-                // We want to draw at Screen X = rowHeaderWidth + 12 to clear the fixed header
-                // Translation X = -scrollLeft + rowHeaderWidth
-                // Draw X = TargetScreenX - TranslationX = (rowHeaderWidth + 12) - (-scrollLeft + rowHeaderWidth)
-                // Draw X = 12 + scrollLeft
-                const stickyX = 12 + scrollLeft;
-                
-                ctx.fillText('+ Add Row', stickyX, addRowY + theme.rowHeight / 2);
-                
-                ctx.restore();
+                if (shouldDrawText) {
+                    ctx.fillStyle = '#6b7280';
+                    ctx.font = `${theme.fontSize}px ${theme.fontFamily}`;
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    
+                    const textX = isScrollable ? 12 + scrollLeft : 12;
+                    ctx.fillText('+ Add Row', textX, addRowY + theme.rowHeight / 2);
+                }
             }
         }
-
-        ctx.restore();
-
-        // 4. Draw Selection (with header offset)
+    }
+    
+    // New Draw Selection Method to handle split
+    private drawSelection(ctx: CanvasRenderingContext2D, engine: GridEngine, frozenWidth: number) {
         const selection = engine.store.getState().selection;
-        if (selection) {
+        if (!selection) return;
+        
+        const { theme } = engine;
+        const { scrollLeft, scrollTop, width, height } = engine.viewport.getState();
+        
+        const drawSelectionPart = (isScrollable: boolean) => {
             ctx.save();
+            
+            if (isScrollable) {
+                ctx.beginPath();
+                ctx.rect(theme.rowHeaderWidth + frozenWidth, theme.headerHeight, width - theme.rowHeaderWidth - frozenWidth, height - theme.headerHeight);
+                ctx.clip();
             ctx.translate(theme.rowHeaderWidth - scrollLeft, theme.headerHeight - scrollTop);
+            } else {
+                // Frozen
+                ctx.beginPath();
+                ctx.rect(theme.rowHeaderWidth, theme.headerHeight, frozenWidth, height - theme.headerHeight);
+                ctx.clip();
+                ctx.translate(theme.rowHeaderWidth, theme.headerHeight - scrollTop);
+            }
 
-            const cols = engine.model.getVisibleColumns();
-            const allCols = engine.model.getColumns();
+            const visibleCols = engine.model.getVisibleColumns(); // All visible
 
             for (const range of selection.ranges) {
-                // Calculate visual range bounds
                 let rangeStartX = -1;
                 let rangeEndX = -1;
                 
                 let currentX = 0;
-                for (const col of cols) {
-                    const trueIndex = allCols.findIndex(c => c.id === col.id);
+                for (const col of visibleCols) {
+                    const belongsToLayer = isScrollable ? !col.pinned : col.pinned;
+                    const trueIndex = engine.model.getColumns().findIndex(c => c.id === col.id);
                     
-                    // Check if this visible column is inside the selection range
                     if (trueIndex >= range.start.col && trueIndex <= range.end.col) {
-                        if (rangeStartX === -1) rangeStartX = currentX;
-                        rangeEndX = currentX + col.width;
+                        if (belongsToLayer) {
+                            if (rangeStartX === -1) rangeStartX = currentX;
+                            rangeEndX = currentX + col.width;
+                        }
                     }
                     
                     currentX += col.width;
@@ -167,86 +247,22 @@ export class CanvasRenderer {
                 
                 if (rangeStartX !== -1) {
                     const startY = range.start.row * theme.rowHeight;
-                    const width = rangeEndX - rangeStartX;
-                    const height = (range.end.row - range.start.row + 1) * theme.rowHeight;
+                    const selWidth = rangeEndX - rangeStartX;
+                    const selHeight = (range.end.row - range.start.row + 1) * theme.rowHeight;
 
-                    // Draw Selection Background
-                    ctx.fillStyle = theme.selectionColor;
-                    ctx.fillRect(rangeStartX, startY, width, height);
+                ctx.fillStyle = theme.selectionColor;
+                    ctx.fillRect(rangeStartX, startY, selWidth, selHeight);
 
-                    // Draw Selection Border
-                    ctx.strokeStyle = theme.selectionBorderColor;
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(rangeStartX, startY, width, height);
-
-                    // Draw Fill Handle (Bottom Right of the visual range)
-                    if (range === selection.ranges[selection.ranges.length - 1]) {
-                        const handleSize = 6;
-                        const handleX = rangeEndX - handleSize / 2;
-                        const handleY = startY + height - handleSize / 2;
-
-                        ctx.fillStyle = theme.selectionBorderColor;
-                        ctx.fillRect(handleX, handleY, handleSize, handleSize);
-
-                        // White border for handle
-                        ctx.strokeStyle = '#ffffff';
-                        ctx.lineWidth = 1;
-                        ctx.strokeRect(handleX, handleY, handleSize, handleSize);
-                    }
-                }
-            }
-            ctx.restore();
-        }
-
-        // 5. Draw Fill Range (if filling)
-        const state = engine.store.getState();
-        if (state.isFilling && state.fillRange && state.fillRange.ranges.length > 0) {
-            const range = state.fillRange.ranges[0];
-
-            ctx.save();
-            // Apply same translate as selection
-            ctx.translate(theme.rowHeaderWidth - scrollLeft, theme.headerHeight - scrollTop);
-
-            const cols = engine.model.getVisibleColumns();
-            const allCols = engine.model.getColumns();
-
-            // Calculate visual range bounds
-            let rangeStartX = -1;
-            let rangeEndX = -1;
-            
-            let currentX = 0;
-            for (const col of cols) {
-                const trueIndex = allCols.findIndex(c => c.id === col.id);
-                
-                // Check if this visible column is inside the selection range
-                if (trueIndex >= range.start.col && trueIndex <= range.end.col) {
-                    if (rangeStartX === -1) rangeStartX = currentX;
-                    rangeEndX = currentX + col.width;
-                }
-                
-                currentX += col.width;
-            }
-
-            if (rangeStartX !== -1) {
-                const startY = range.start.row * theme.rowHeight;
-                const width = rangeEndX - rangeStartX;
-                const height = (range.end.row - range.start.row + 1) * theme.rowHeight;
-
-                // Draw dashed border
                 ctx.strokeStyle = theme.selectionBorderColor;
-                ctx.lineWidth = 1;
-                ctx.setLineDash([4, 4]);
-                ctx.strokeRect(rangeStartX, startY, width, height);
+                ctx.lineWidth = 2;
+                    ctx.strokeRect(rangeStartX, startY, selWidth, selHeight);
+                }
             }
-
             ctx.restore();
-        }
-
-        // 6. Draw Canvas Headers (NEW)
-        this.drawHeaders(ctx, engine);
-
-        // 7. Draw Error Tooltip on hover
-        this.drawErrorTooltip(ctx, engine);
+        };
+        
+        drawSelectionPart(true);
+        drawSelectionPart(false);
     }
 
     private drawIcon(ctx: CanvasRenderingContext2D, icon: string, x: number, y: number, size: number, color: string) {
@@ -269,7 +285,6 @@ export class CanvasRenderer {
             ctx.quadraticCurveTo(9, 15, 1, 12);
             ctx.quadraticCurveTo(9, 9, 12, 1);
             ctx.fill();
-            // Small star
             ctx.moveTo(18, 2);
             ctx.lineTo(19, 5);
             ctx.lineTo(22, 6);
@@ -300,12 +315,10 @@ export class CanvasRenderer {
             ctx.stroke();
             ctx.setLineDash([]);
         } else if (icon === 'text') {
-            // 'Aa' simplified or Text Lines
             ctx.fillRect(4, 6, 16, 2);
             ctx.fillRect(4, 11, 12, 2);
             ctx.fillRect(4, 16, 10, 2);
         } else if (icon === 'number') {
-            // Hash #
             ctx.strokeStyle = color;
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -315,7 +328,6 @@ export class CanvasRenderer {
             ctx.moveTo(5, 15); ctx.lineTo(19, 15);
             ctx.stroke();
         } else if (icon === 'date') {
-            // Calendar
             ctx.strokeStyle = color;
             ctx.lineWidth = 2;
             ctx.strokeRect(4, 6, 16, 14);
@@ -325,7 +337,6 @@ export class CanvasRenderer {
             ctx.moveTo(4, 10); ctx.lineTo(20, 10);
             ctx.stroke();
         } else if (icon === 'boolean') {
-            // Checkbox
             ctx.strokeStyle = color;
             ctx.lineWidth = 2;
             ctx.strokeRect(4, 4, 16, 16);
@@ -333,7 +344,6 @@ export class CanvasRenderer {
             ctx.moveTo(8, 12); ctx.lineTo(11, 15); ctx.lineTo(16, 9);
             ctx.stroke();
         } else if (icon === 'email') {
-            // Envelope
             ctx.strokeStyle = color;
             ctx.lineWidth = 2;
             ctx.strokeRect(3, 6, 18, 12);
@@ -341,29 +351,19 @@ export class CanvasRenderer {
             ctx.moveTo(3, 6); ctx.lineTo(12, 13); ctx.lineTo(21, 6);
             ctx.stroke();
         } else if (icon === 'url') {
-            // Link
             ctx.strokeStyle = color;
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.arc(9, 12, 4, 0.5 * Math.PI, 1.5 * Math.PI); // Left loop
+            ctx.arc(9, 12, 4, 0.5 * Math.PI, 1.5 * Math.PI);
             ctx.moveTo(9, 8); ctx.lineTo(15, 8);
             ctx.moveTo(9, 16); ctx.lineTo(15, 16);
-            ctx.arc(15, 12, 4, 1.5 * Math.PI, 0.5 * Math.PI); // Right loop
+            ctx.arc(15, 12, 4, 1.5 * Math.PI, 0.5 * Math.PI);
             ctx.stroke();
-            // Simplified link: Just circle and line
-            // Override:
-            ctx.beginPath();
-            ctx.moveTo(6, 12); ctx.lineTo(10, 12);
-            ctx.moveTo(14, 12); ctx.lineTo(18, 12);
-            ctx.stroke();
-            ctx.strokeRect(8, 10, 8, 4); // simple link
         } else if (icon === 'select') {
-             // List
             ctx.fillRect(4, 6, 16, 2);
             ctx.fillRect(4, 11, 16, 2);
             ctx.fillRect(4, 16, 16, 2);
             ctx.fillStyle = color;
-             // Arrow down small
             ctx.beginPath();
             ctx.moveTo(18, 16); ctx.lineTo(21, 16); ctx.lineTo(19.5, 19);
             ctx.fill();
@@ -372,165 +372,164 @@ export class CanvasRenderer {
         ctx.restore();
     }
 
-    private drawHeaders(ctx: CanvasRenderingContext2D, engine: GridEngine) {
+    private drawHeaders(ctx: CanvasRenderingContext2D, engine: GridEngine, frozenWidth: number) {
         const { theme } = engine;
-        const { scrollLeft } = engine.viewport.getState();
+        const { scrollLeft, width } = engine.viewport.getState();
         const visibleColumns = engine.model.getVisibleColumns();
         const sortState = engine.model.getSortState();
         const reorderState = engine.store.getState().reorderState;
 
-        ctx.save();
-        // Stick to top, scroll horizontally
-        ctx.translate(theme.rowHeaderWidth - scrollLeft, 0);
-
-        // Draw Clean Background
-        const totalVisibleWidth = visibleColumns.reduce((sum, col) => sum + col.width, 0) + 50; // +50 for ghost
-        ctx.fillStyle = theme.headerBackgroundColor;
-        ctx.fillRect(0, 0, totalVisibleWidth, theme.headerHeight);
-
-        // Draw Bottom Border
-        ctx.strokeStyle = theme.borderColor;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(0, theme.headerHeight);
-        ctx.lineTo(totalVisibleWidth, theme.headerHeight);
-        ctx.stroke();
-
-        // Determine Visual Order
         let visualCols = [...visibleColumns];
         if (reorderState) {
             const { colIndex, targetIndex } = reorderState;
-            const [item] = visualCols.splice(colIndex, 1);
-            visualCols.splice(targetIndex, 0, item);
+            if (colIndex >= 0 && colIndex < visualCols.length && targetIndex >= 0 && targetIndex <= visualCols.length) {
+                const [item] = visualCols.splice(colIndex, 1);
+                visualCols.splice(targetIndex, 0, item);
+            }
         }
 
-        let x = 0;
-        for (let i = 0; i < visibleColumns.length; i++) {
-            const originalCol = visibleColumns[i];
-            const visualCol = visualCols[i];
+        const visualPinned = visualCols.filter(c => c.pinned);
+        const visualScrollable = visualCols.filter(c => !c.pinned);
+
+        const drawHeaderList = (columns: GridColumn[], isScrollable: boolean) => {
+            let x = isScrollable ? frozenWidth : 0;
             
-            // Background (per cell)
-            ctx.fillStyle = theme.headerBackgroundColor;
-            ctx.fillRect(x, 0, originalCol.width, theme.headerHeight);
-
-            // Border (Always visible, structure intact)
-            ctx.strokeStyle = theme.borderColor;
-            ctx.strokeRect(x, 0, originalCol.width, theme.headerHeight);
-
-            // Text Drawing
-            // Don't draw text for the ghost (dragged item)
-            const isGhost = reorderState && visualCol.id === visibleColumns[reorderState.colIndex].id;
-
-            if (!isGhost) {
-                ctx.fillStyle = theme.headerColor || '#374151';
-                ctx.font = `${theme.headerFontSize}px ${theme.headerFontFamily}`;
-                ctx.textBaseline = 'middle';
-                ctx.textAlign = 'left';
+            for (const visualCol of columns) {
+                // OPTIMIZATION: Check visibility
+                const screenX = isScrollable 
+                    ? x - scrollLeft + theme.rowHeaderWidth 
+                    : x + theme.rowHeaderWidth;
                 
-                const hasAction = !!visualCol.headerAction;
-                const textPadding = 8;
-                const menuIconSpace = 28;
-                const actionIconSpace = hasAction ? 24 : 0;
-                const typeIconSpace = 20; // NEW: Space for type icon
-                const availableWidth = originalCol.width - (textPadding * 2) - menuIconSpace - actionIconSpace - typeIconSpace;
-                
-                ctx.save();
-                ctx.beginPath();
-                ctx.rect(x + textPadding, 0, availableWidth + typeIconSpace, theme.headerHeight); // Allow clipping to include icon
-                ctx.clip();
-                
-                // 0. Draw Type Icon
-                this.drawIcon(
-                    ctx, 
-                    visualCol.type || 'text', 
-                    x + textPadding, 
-                    theme.headerHeight / 2 - 7, 
-                    14, 
-                    '#9ca3af'
-                );
+                const screenRight = screenX + visualCol.width;
 
-                // Draw Text (Shifted)
-                ctx.fillText(visualCol.title, x + textPadding + typeIconSpace, theme.headerHeight / 2);
-                ctx.restore();
+                if (screenRight < theme.rowHeaderWidth || screenX > width) {
+                    x += visualCol.width;
+                    continue;
+                }
 
-                // Icons (Action / Sort / Menu) - Only if not reordering
-                if (!reorderState) {
-                    // 1. Action Icon (if present)
-                    if (hasAction && visualCol.headerAction) {
-                        const actionX = x + originalCol.width - 48; // 20 (menu) + 28 (action)
-                        const actionY = theme.headerHeight / 2 - 8; // 16x16 center
-                        
-                        // Check Hover for color
-                        const hoverPos = engine.store.getState().hoverPosition;
-                        let isActionHovered = false;
-                        if (hoverPos && hoverPos.y < theme.headerHeight) {
-                             const relativeHoverX = hoverPos.x - theme.rowHeaderWidth + scrollLeft;
-                             if (relativeHoverX >= actionX - 2 && relativeHoverX < actionX + 18) isActionHovered = true;
-                        }
-                        
-                        this.drawIcon(
-                            ctx, 
-                            visualCol.headerAction.icon, 
-                            actionX, 
-                            actionY, 
-                            16, 
-                            isActionHovered ? '#3b82f6' : '#6b7280'
-                        );
-                    }
+                const isGhost = reorderState && visualCol.id === visibleColumns[reorderState.colIndex].id;
 
-                    // 2. Sort / Menu Icon
-                    const sort = sortState.find(s => s.columnId === visualCol.id);
-                    const iconX = x + originalCol.width - 20;
-                    const iconY = theme.headerHeight / 2;
+                // Background
+                ctx.fillStyle = theme.headerBackgroundColor;
+                ctx.fillRect(x, 0, visualCol.width, theme.headerHeight);
+
+                // Border
+                ctx.strokeStyle = theme.borderColor;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x, 0, visualCol.width, theme.headerHeight);
+
+                if (!isGhost) {
+                    ctx.fillStyle = theme.headerColor || '#374151';
+                    ctx.font = `600 ${theme.headerFontSize || theme.fontSize}px ${theme.headerFontFamily || theme.fontFamily}`;
+                    ctx.textBaseline = 'middle';
+                    ctx.textAlign = 'left';
                     
-                    // Check Hover
-                    const hoverPos = engine.store.getState().hoverPosition;
-                    let isHovered = false;
-                    if (hoverPos && hoverPos.y < theme.headerHeight) {
-                         const relativeHoverX = hoverPos.x - theme.rowHeaderWidth + scrollLeft;
-                         if (relativeHoverX >= x && relativeHoverX < x + originalCol.width) isHovered = true;
-                    }
+                    const hasAction = !!visualCol.headerAction;
+                    const textPadding = 8;
+                    const menuIconSpace = 28;
+                    const actionIconSpace = hasAction ? 24 : 0;
+                    const typeIconSpace = 20;
+                    const availableWidth = visualCol.width - (textPadding * 2) - menuIconSpace - actionIconSpace - typeIconSpace;
 
-                    if (sort) {
-                        ctx.beginPath();
-                        ctx.fillStyle = '#2563eb';
-                        if (sort.direction === 'asc') {
-                            ctx.moveTo(iconX, iconY + 3);
-                            ctx.lineTo(iconX + 4, iconY - 3);
-                            ctx.lineTo(iconX + 8, iconY + 3);
-                        } else {
-                            ctx.moveTo(iconX, iconY - 3);
-                            ctx.lineTo(iconX + 4, iconY + 3);
-                            ctx.lineTo(iconX + 8, iconY - 3);
+            ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(x + textPadding, 0, Math.max(0, availableWidth + typeIconSpace), theme.headerHeight);
+                    ctx.clip();
+                    
+                    this.drawIcon(ctx, visualCol.type || 'text', x + textPadding, theme.headerHeight / 2 - 7, 14, '#9ca3af');
+                    ctx.fillText(visualCol.title, x + textPadding + typeIconSpace, theme.headerHeight / 2);
+                    ctx.restore();
+
+                    if (!reorderState) {
+                        if (hasAction && visualCol.headerAction) {
+                            const actionX = x + visualCol.width - 48;
+                            const actionY = theme.headerHeight / 2 - 8;
+                            const hoverPos = engine.store.getState().hoverPosition;
+                            let isActionHovered = false;
+                            if (hoverPos && hoverPos.y < theme.headerHeight) {
+                                 const relativeHoverX = isScrollable 
+                                    ? hoverPos.x - theme.rowHeaderWidth + scrollLeft 
+                                    : hoverPos.x - theme.rowHeaderWidth;
+                                 if (relativeHoverX >= actionX - 2 && relativeHoverX < actionX + 18) isActionHovered = true;
+                            }
+                            this.drawIcon(ctx, visualCol.headerAction.icon, actionX, actionY, 16, isActionHovered ? '#3b82f6' : '#6b7280');
                         }
-                        ctx.fill();
-                    } else if (isHovered) {
-                        ctx.beginPath();
-                        ctx.strokeStyle = '#9ca3af';
-                        ctx.lineWidth = 1.5;
-                        ctx.moveTo(iconX, iconY - 2);
-                        ctx.lineTo(iconX + 4, iconY + 2);
-                        ctx.lineTo(iconX + 8, iconY - 2);
-                        ctx.stroke();
+
+                        const sort = sortState.find(s => s.columnId === visualCol.id);
+                        const iconX = x + visualCol.width - 20;
+                        const iconY = theme.headerHeight / 2;
+                        const hoverPos = engine.store.getState().hoverPosition;
+                        let isHovered = false;
+                        if (hoverPos && hoverPos.y < theme.headerHeight) {
+                             const relativeHoverX = isScrollable 
+                                ? hoverPos.x - theme.rowHeaderWidth + scrollLeft 
+                                : hoverPos.x - theme.rowHeaderWidth;
+                             if (relativeHoverX >= x && relativeHoverX < x + visualCol.width) isHovered = true;
+                        }
+                        
+                        const activeHeaderMenu = engine.store.getState().activeHeaderMenu;
+                        const isMenuOpen = activeHeaderMenu?.colId === visualCol.id;
+
+                        if (sort) {
+                            ctx.beginPath();
+                            ctx.fillStyle = '#2563eb';
+                            if (sort.direction === 'asc') {
+                                ctx.moveTo(iconX, iconY + 3);
+                                ctx.lineTo(iconX + 4, iconY - 3);
+                                ctx.lineTo(iconX + 8, iconY + 3);
+                            } else {
+                                ctx.moveTo(iconX, iconY - 3);
+                                ctx.lineTo(iconX + 4, iconY + 3);
+                                ctx.lineTo(iconX + 8, iconY - 3);
+                            }
+                            ctx.fill();
+                        } else if (isHovered || isMenuOpen) {
+                            ctx.beginPath();
+                            ctx.strokeStyle = '#9ca3af';
+                            ctx.lineWidth = 1.5;
+                            ctx.moveTo(iconX, iconY - 2);
+                            ctx.lineTo(iconX + 4, iconY + 2);
+                            ctx.lineTo(iconX + 8, iconY - 2);
+                            ctx.stroke();
+                        }
                     }
                 }
+                x += visualCol.width;
             }
+        };
 
-            x += originalCol.width;
-        }
-
-        // Ghost Column (+)
-        const ghostWidth = 50;
-        ctx.fillStyle = '#f9fafb'; 
-        ctx.fillRect(x, 0, ghostWidth, theme.headerHeight);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(theme.rowHeaderWidth + frozenWidth, 0, width - theme.rowHeaderWidth - frozenWidth, theme.headerHeight);
+        ctx.clip();
+        ctx.translate(theme.rowHeaderWidth - scrollLeft, 0);
+        
+        const totalVisibleWidth = visibleColumns.reduce((sum, col) => sum + col.width, 0) + 100;
+        ctx.fillStyle = theme.headerBackgroundColor;
+        ctx.fillRect(frozenWidth, 0, totalVisibleWidth - frozenWidth, theme.headerHeight);
         
         ctx.strokeStyle = theme.borderColor;
-        ctx.strokeRect(x, 0, ghostWidth, theme.headerHeight);
+        ctx.beginPath();
+        ctx.moveTo(frozenWidth, theme.headerHeight);
+        ctx.lineTo(totalVisibleWidth, theme.headerHeight);
+        ctx.stroke();
+        
+        drawHeaderList(visualScrollable, true);
+        
+        let ghostX = frozenWidth;
+        for(const c of visualScrollable) ghostX += c.width;
+        
+        const ghostWidth = 50;
+        ctx.fillStyle = '#f9fafb'; 
+        ctx.fillRect(ghostX, 0, ghostWidth, theme.headerHeight);
+        ctx.strokeStyle = theme.borderColor;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ghostX, 0, ghostWidth, theme.headerHeight);
         
         ctx.strokeStyle = '#9ca3af'; 
         ctx.lineWidth = 2;
         ctx.beginPath();
-        const centerX = x + ghostWidth / 2;
+        const centerX = ghostX + ghostWidth / 2;
         const centerY = theme.headerHeight / 2;
         ctx.moveTo(centerX - 5, centerY);
         ctx.lineTo(centerX + 5, centerY);
@@ -538,61 +537,87 @@ export class CanvasRenderer {
         ctx.lineTo(centerX, centerY + 5);
         ctx.stroke();
 
-        // Draw Ghost Header (Overlay)
-        if (reorderState) {
-            const draggedCol = visibleColumns[reorderState.colIndex];
-            
-            // Measure Text Width
-            ctx.font = `600 ${theme.headerFontSize}px ${theme.headerFontFamily}`;
-            const textWidth = ctx.measureText(draggedCol.title).width;
-            const padding = 16;
-            const ghostPillWidth = textWidth + padding * 2;
-            
-            // Position Ghost based on Drag Offset (Natural Drag)
-            const dragOffset = reorderState.dragOffset || 0;
-            
-            // dragX is clientX
-            // We need to calculate: clientX - rowHeaderWidth + scrollLeft - dragOffset
-            const ghostX = reorderState.dragX - theme.rowHeaderWidth + scrollLeft - dragOffset;
-            
+        ctx.restore();
+
+        if (visualPinned.length > 0) {
             ctx.save();
-            ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
-            ctx.shadowBlur = 12;
-            ctx.shadowOffsetY = 4;
+            ctx.translate(theme.rowHeaderWidth, 0);
             
-            // Pill Background
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            ctx.fillStyle = theme.headerBackgroundColor;
+            ctx.fillRect(0, 0, frozenWidth, theme.headerHeight);
             
-            // Rounded Rect
-            const r = 6;
-            const gx = ghostX;
-            const gy = 4;
-            const gw = ghostPillWidth;
-            const gh = theme.headerHeight - 8;
+            ctx.strokeStyle = theme.borderColor;
+            ctx.beginPath();
+            ctx.moveTo(0, theme.headerHeight);
+            ctx.lineTo(frozenWidth, theme.headerHeight);
+            ctx.stroke();
+            
+            drawHeaderList(visualPinned, false);
             
             ctx.beginPath();
-            ctx.moveTo(gx + r, gy);
-            ctx.lineTo(gx + gw - r, gy);
-            ctx.quadraticCurveTo(gx + gw, gy, gx + gw, gy + r);
-            ctx.lineTo(gx + gw, gy + gh - r);
-            ctx.quadraticCurveTo(gx + gw, gy + gh, gx + gw - r, gy + gh);
-            ctx.lineTo(gx + r, gy + gh);
-            ctx.quadraticCurveTo(gx, gy + gh, gx, gy + gh - r);
-            ctx.lineTo(gx, gy + r);
-            ctx.quadraticCurveTo(gx, gy, gx + r, gy);
-            ctx.closePath();
-            ctx.fill();
+            ctx.moveTo(frozenWidth - 0.5, 0);
+            ctx.lineTo(frozenWidth - 0.5, theme.headerHeight);
+            ctx.strokeStyle = '#d1d5db';
+            ctx.lineWidth = 1;
+            ctx.stroke();
             
-            // Text
-            ctx.fillStyle = '#111827';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(draggedCol.title, ghostX + ghostPillWidth / 2, theme.headerHeight / 2);
+            ctx.restore();
             
+            // Header shadow (Gradient)
+            ctx.save();
+            ctx.translate(theme.rowHeaderWidth, 0);
+            const hGradient = ctx.createLinearGradient(frozenWidth, 0, frozenWidth + 6, 0);
+            hGradient.addColorStop(0, 'rgba(0, 0, 0, 0.05)');
+            hGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            ctx.fillStyle = hGradient;
+            ctx.fillRect(frozenWidth, 0, 6, theme.headerHeight);
             ctx.restore();
         }
 
-        ctx.restore();
+        if (reorderState) {
+            const draggedCol = visibleColumns[reorderState.colIndex];
+            if (draggedCol) {
+                const dragOffset = reorderState.dragOffset || 0;
+                const ghostX = reorderState.dragX - dragOffset;
+                const ghostY = 6;
+                
+                ctx.save();
+                ctx.resetTransform();
+                ctx.scale(this.dpr, this.dpr);
+                
+                ctx.font = `600 ${theme.headerFontSize || theme.fontSize}px ${theme.headerFontFamily || theme.fontFamily}`;
+                const textWidth = ctx.measureText(draggedCol.title).width;
+                const padding = 16;
+                const pillWidth = textWidth + padding * 2;
+                const pillHeight = theme.headerHeight - 12;
+                
+                ctx.fillStyle = 'rgba(59, 130, 246, 0.9)';
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+                ctx.shadowBlur = 8;
+                ctx.shadowOffsetY = 2;
+                
+                const r = 6;
+                ctx.beginPath();
+                ctx.moveTo(ghostX + r, ghostY);
+                ctx.lineTo(ghostX + pillWidth - r, ghostY);
+                ctx.quadraticCurveTo(ghostX + pillWidth, ghostY, ghostX + pillWidth, ghostY + r);
+                ctx.lineTo(ghostX + pillWidth, ghostY + pillHeight - r);
+                ctx.quadraticCurveTo(ghostX + pillWidth, ghostY + pillHeight, ghostX + pillWidth - r, ghostY + pillHeight);
+                ctx.lineTo(ghostX + r, ghostY + pillHeight);
+                ctx.quadraticCurveTo(ghostX, ghostY + pillHeight, ghostX, ghostY + pillHeight - r);
+                ctx.lineTo(ghostX, ghostY + r);
+                ctx.quadraticCurveTo(ghostX, ghostY, ghostX + r, ghostY);
+                ctx.fill();
+                
+                ctx.fillStyle = '#ffffff';
+                ctx.shadowBlur = 0;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(draggedCol.title, ghostX + pillWidth / 2, ghostY + pillHeight / 2);
+                
+                ctx.restore();
+            }
+        }
     }
 
     private drawErrorTooltip(ctx: CanvasRenderingContext2D, engine: typeof this.engine) {
@@ -602,11 +627,9 @@ export class CanvasRenderer {
         const { theme } = engine;
         const { scrollTop, scrollLeft } = engine.viewport.getState();
 
-        // Convert mouse position to grid cell
         const gridX = hoverPosition.x - theme.rowHeaderWidth + scrollLeft;
         const gridY = hoverPosition.y - theme.headerHeight + scrollTop;
 
-        // Find which cell is being hovered
         const rowIndex = Math.floor(gridY / theme.rowHeight);
         const columns = engine.model.getVisibleColumns();
 
@@ -628,10 +651,8 @@ export class CanvasRenderer {
         const column = columns[colIndex];
         const cell = row.cells.get(column.id);
 
-        // Only show tooltip for error cells
         if (!cell?.error || !cell.errorMessage) return;
 
-        // Draw tooltip
         const padding = 8;
         const fontSize = 12;
         const text = `⚠️ ${cell.errorMessage}`;
@@ -640,14 +661,12 @@ export class CanvasRenderer {
         ctx.font = `${fontSize}px ${theme.fontFamily}`;
         const textWidth = ctx.measureText(text).width;
 
-        // Position tooltip near mouse, but keep it on screen
         let tooltipX = hoverPosition.x + 10;
         let tooltipY = hoverPosition.y - 30;
 
         const tooltipWidth = textWidth + padding * 2;
         const tooltipHeight = fontSize + padding * 2;
 
-        // Keep tooltip on screen
         const canvas = ctx.canvas;
         if (tooltipX + tooltipWidth > canvas.width) {
             tooltipX = hoverPosition.x - tooltipWidth - 10;
@@ -656,12 +675,10 @@ export class CanvasRenderer {
             tooltipY = hoverPosition.y + 20;
         }
 
-        // Draw tooltip background (dark with slight transparency)
         ctx.fillStyle = 'rgba(51, 51, 51, 0.95)';
         ctx.strokeStyle = '#ef4444';
         ctx.lineWidth = 1;
 
-        // Rounded rectangle
         const radius = 4;
         ctx.beginPath();
         ctx.moveTo(tooltipX + radius, tooltipY);
@@ -677,7 +694,6 @@ export class CanvasRenderer {
         ctx.fill();
         ctx.stroke();
 
-        // Draw text
         ctx.fillStyle = '#ffffff';
         ctx.textBaseline = 'middle';
         ctx.fillText(text, tooltipX + padding, tooltipY + tooltipHeight / 2);

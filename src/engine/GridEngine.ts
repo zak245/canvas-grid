@@ -219,7 +219,12 @@ export class GridEngine {
         try {
             this.lifecycle.onBeforeDataLoad?.();
 
-            const data = await this.adapter.fetchData({});
+            // Fetch all data with large page size
+            // TODO: Implement infinite scrolling for very large datasets
+            const data = await this.adapter.fetchData({ 
+                page: 1, 
+                pageSize: 50000 // Large enough for demo purposes
+            });
 
             // Allow lifecycle hook to transform data
             const processedData = this.lifecycle.onDataLoad?.(data) || data;
@@ -546,11 +551,11 @@ export class GridEngine {
         const valueToSet = processedValue !== undefined ? processedValue : value;
 
         try {
-            // Call adapter
-            await this.adapter.updateCell(rowIndex, columnId, valueToSet);
-
-            // Update model
+            // OPTIMISTIC UPDATE: Update UI immediately
             this.model.setCellValue(rowIndex, columnId, valueToSet);
+
+            // BACKEND SYNC: Update backend in background
+            await this.adapter.updateCell(rowIndex, columnId, valueToSet);
 
             // After hook
             this.lifecycle.onCellChange?.({
@@ -560,6 +565,9 @@ export class GridEngine {
                 oldValue,
             });
         } catch (error) {
+            // ROLLBACK: Restore old value on error
+            this.model.setCellValue(rowIndex, columnId, oldValue);
+            
             this.lifecycle.onError?.({
                 type: 'cell:update',
                 message: (error as Error).message,
@@ -567,6 +575,124 @@ export class GridEngine {
             });
             throw error;
         }
+    }
+
+    /**
+     * Bulk update multiple cells (for drag-to-fill, paste, etc.)
+     * Uses optimistic updates for instant UI feedback
+     */
+    async bulkUpdateCells(updates: Array<{ rowIndex: number; columnId: string; value: CellValue }>): Promise<void> {
+        if (!this.adapter) {
+            throw new Error('Adapter not initialized. Use config-based constructor.');
+        }
+
+        // Store old values for rollback
+        const oldValues = updates.map(u => ({
+            rowIndex: u.rowIndex,
+            columnId: u.columnId,
+            oldValue: this.model.getCell(u.rowIndex, u.columnId)?.value,
+        }));
+
+        try {
+            // OPTIMISTIC UPDATE: Update all cells in UI immediately
+            for (const update of updates) {
+                this.model.setCellValue(update.rowIndex, update.columnId, update.value);
+            }
+
+            // BACKEND SYNC: Batch update to backend
+            await this.adapter.bulkUpdateCells(updates);
+
+            console.log(`✅ Bulk updated ${updates.length} cells`);
+        } catch (error) {
+            // ROLLBACK: Restore all old values on error
+            for (const old of oldValues) {
+                this.model.setCellValue(old.rowIndex, old.columnId, old.oldValue);
+            }
+
+            this.lifecycle.onError?.({
+                type: 'cell:bulk-update',
+                message: (error as Error).message,
+                timestamp: Date.now(),
+            });
+            throw error;
+        }
+    }
+
+    /**
+     * Fill data from source range to target range (drag-to-fill)
+     */
+    async fillData(
+        source: { start: { col: number; row: number }; end: { col: number; row: number } },
+        target: { start: { col: number; row: number }; end: { col: number; row: number } }
+    ): Promise<void> {
+        // Get source data
+        const columns = this.model.getColumns();
+        const sourceData: any[][] = [];
+        const startCol = Math.min(source.start.col, source.end.col);
+        const endCol = Math.max(source.start.col, source.end.col);
+        const startRow = Math.min(source.start.row, source.end.row);
+        const endRow = Math.max(source.start.row, source.end.row);
+
+        const sourceWidth = endCol - startCol + 1;
+        const sourceHeight = endRow - startRow + 1;
+
+        for (let r = startRow; r <= endRow; r++) {
+            const rowData: any[] = [];
+            for (let c = startCol; c <= endCol; c++) {
+                const colId = columns[c].id;
+                const cell = this.model.getCell(r, colId);
+                rowData.push(cell?.value);
+            }
+            sourceData.push(rowData);
+        }
+
+        // Build updates array
+        const updates: Array<{ rowIndex: number; columnId: string; value: CellValue }> = [];
+        const targetStartCol = Math.min(target.start.col, target.end.col);
+        const targetEndCol = Math.max(target.start.col, target.end.col);
+        const targetStartRow = Math.min(target.start.row, target.end.row);
+        const targetEndRow = Math.max(target.start.row, target.end.row);
+
+        for (let r = targetStartRow; r <= targetEndRow; r++) {
+            for (let c = targetStartCol; c <= targetEndCol; c++) {
+                const sourceR = (r - targetStartRow) % sourceHeight;
+                const sourceC = (c - targetStartCol) % sourceWidth;
+                const value = sourceData[sourceR][sourceC];
+                const colId = columns[c].id;
+                
+                updates.push({ rowIndex: r, columnId: colId, value });
+            }
+        }
+
+        // Use bulkUpdateCells for optimistic update + backend sync
+        await this.bulkUpdateCells(updates);
+    }
+
+    /**
+     * Paste data (from clipboard)
+     */
+    async pasteData(data: string[][], startRow: number, startCol: number): Promise<void> {
+        const columns = this.model.getColumns();
+        const totalRows = this.model.getRowCount();
+        const updates: Array<{ rowIndex: number; columnId: string; value: CellValue }> = [];
+
+        for (let r = 0; r < data.length; r++) {
+            const targetRow = startRow + r;
+            if (targetRow >= totalRows) break;
+
+            const rowData = data[r];
+            for (let c = 0; c < rowData.length; c++) {
+                const targetCol = startCol + c;
+                if (targetCol >= columns.length) break;
+
+                const value = rowData[c];
+                const column = columns[targetCol];
+                updates.push({ rowIndex: targetRow, columnId: column.id, value });
+            }
+        }
+
+        // Use bulkUpdateCells for optimistic update + backend sync
+        await this.bulkUpdateCells(updates);
     }
 
     /**
@@ -686,17 +812,26 @@ export class GridEngine {
         if (width < 50) width = 50; // Min width
         if (width > 2000) width = 2000; // Max width
 
-        // Update model
+        // OPTIMISTIC UPDATE: Update model immediately
         const columns = this.model.getColumns();
         const colIndex = columns.findIndex(c => c.id === columnId);
         if (colIndex === -1) return;
-
-        // Create a new column object to trigger updates if we used immutable patterns
-        // But here we mutate the object for performance, then notify
-        columns[colIndex].width = width;
         
-        // Notify UI (headers need to move)
+        const oldWidth = columns[colIndex].width;
+        columns[colIndex].width = width;
         this.model.setColumns([...columns]);
+
+        // BACKEND SYNC: Update backend in background
+        if (this.adapter) {
+            try {
+                await this.adapter.resizeColumn(columnId, width);
+            } catch (error) {
+                // ROLLBACK on error
+                columns[colIndex].width = oldWidth;
+                this.model.setColumns([...columns]);
+                console.error('Column resize failed:', error);
+            }
+        }
         
         // Trigger render to update grid lines
         this.render();
@@ -758,23 +893,37 @@ export class GridEngine {
             throw new Error('Adapter not initialized. Use config-based constructor.');
         }
 
-        // Update model
+        // Store old column for rollback
         const columns = this.model.getColumns();
         const colIndex = columns.findIndex(c => c.id === columnId);
         if (colIndex === -1) return;
+        
+        const oldColumn = { ...columns[colIndex] };
 
-        // Apply updates
+        // OPTIMISTIC UPDATE: Apply updates immediately
         const updatedColumn = { ...columns[colIndex], ...updates };
         columns[colIndex] = updatedColumn;
-        
-        this.model.setColumns([...columns]); // Trigger update
-        
-        // Notify subscribers
+        this.model.setColumns([...columns]);
         this.notifyDataChange();
         this.render();
 
-        // TODO: Call adapter if needed for backend persistence
-        // await this.adapter.updateColumn(columnId, updates);
+        // BACKEND SYNC: Update backend in background
+        try {
+            await this.adapter.updateColumn(columnId, updates);
+        } catch (error) {
+            // ROLLBACK on error
+            columns[colIndex] = oldColumn;
+            this.model.setColumns([...columns]);
+            this.notifyDataChange();
+            this.render();
+            
+            this.lifecycle.onError?.({
+                type: 'column:update',
+                message: (error as Error).message,
+                timestamp: Date.now(),
+            });
+            throw error;
+        }
     }
 
     /**

@@ -144,6 +144,8 @@ export const GridContainer: React.FC<GridContainerProps> = ({
         if (action === 'hide') engine.setColumnVisibility(columnId, false);
         if (action === 'rename') engine.store.setState({ editingHeader: columnId });
         if (action === 'settings') engine.store.setState({ activeColumnSettings: columnId });
+        if (action === 'pin') engine.updateColumn(columnId, { pinned: true });
+        if (action === 'unpin') engine.updateColumn(columnId, { pinned: false });
         // Close via store
         engine.store.setState({ activeHeaderMenu: null });
     };
@@ -189,6 +191,7 @@ export const GridContainer: React.FC<GridContainerProps> = ({
                     x={activeHeaderMenu.x}
                     y={activeHeaderMenu.y}
                     columnId={activeHeaderMenu.colId}
+                    isPinned={engine.model.getColumnById(activeHeaderMenu.colId)?.pinned}
                     onClose={handleCloseMenu}
                     onAction={handleMenuAction}
                 />

@@ -353,6 +353,7 @@ export class MouseHandler {
     private calculateReorderTarget(clientX: number): number {
         const { theme } = this.engine;
         const { scrollLeft } = this.engine.viewport.getState();
+        const frozenWidth = this.engine.model.getFrozenWidth();
         const visibleCols = this.engine.model.getVisibleColumns();
         const sourceIndex = this.reorderCandidate?.colIndex ?? -1;
 
@@ -362,7 +363,14 @@ export class MouseHandler {
         const ghostWidth = draggedCol.width; 
         const dragOffset = this.reorderCandidate?.dragOffset ?? (ghostWidth / 2);
         
-        const ghostLeft = (clientX - theme.rowHeaderWidth + scrollLeft) - dragOffset;
+        // Map ClientX to GridX logic
+        const adjustedX = clientX - theme.rowHeaderWidth;
+        let gridX = adjustedX;
+        if (adjustedX >= frozenWidth) {
+            gridX += scrollLeft;
+        }
+        
+        const ghostLeft = gridX - dragOffset;
         const ghostRight = ghostLeft + ghostWidth;
 
         const candidates: number[] = [];
@@ -399,11 +407,18 @@ export class MouseHandler {
     private getHeaderAt(x: number): { colIndex: number; onEdge: boolean; xInCol: number } {
         const { theme } = this.engine;
         const { scrollLeft } = this.engine.viewport.getState();
+        const frozenWidth = this.engine.model.getFrozenWidth();
         
-        const gridX = x + scrollLeft - theme.rowHeaderWidth;
-        
-        if (gridX < 0) return { colIndex: -1, onEdge: false, xInCol: 0 };
+        const adjustedX = x - theme.rowHeaderWidth;
+        if (adjustedX < 0) return { colIndex: -1, onEdge: false, xInCol: 0 };
 
+        // Map to Grid Coordinates
+        let gridX = adjustedX;
+        if (adjustedX >= frozenWidth) {
+            gridX += scrollLeft;
+        }
+        
+        // Logic below assumes gridX corresponds to cumulative column widths
         let currentX = 0;
         const columns = this.engine.model.getVisibleColumns();
         const edgeThreshold = 5;
@@ -416,6 +431,10 @@ export class MouseHandler {
                     return { colIndex: i, onEdge: true, xInCol };
                 }
                 if (xInCol <= edgeThreshold && i > 0) {
+                    // Check if previous column is visible/valid to resize?
+                    // If i is first scrollable column, i-1 is last frozen column.
+                    // Resizing boundary between frozen and scrollable?
+                    // It should work fine.
                     return { colIndex: i - 1, onEdge: true, xInCol };
                 }
                 return { colIndex: i, onEdge: false, xInCol };
@@ -429,13 +448,20 @@ export class MouseHandler {
     private getCellAt(x: number, y: number): CellPosition | null {
         const { scrollTop, scrollLeft } = this.engine.viewport.getState();
         const { theme } = this.engine;
+        const frozenWidth = this.engine.model.getFrozenWidth();
 
         const adjustedX = x - theme.rowHeaderWidth;
         const adjustedY = y - theme.headerHeight;
 
         if (adjustedX < 0 || adjustedY < 0) return null;
 
-        const gridX = adjustedX + scrollLeft;
+        // Map X
+        let gridX = adjustedX;
+        if (adjustedX >= frozenWidth) {
+            gridX += scrollLeft;
+        }
+
+        // Map Y (Vertical scroll always applies)
         const gridY = adjustedY + scrollTop;
 
         const rowIndex = Math.floor(gridY / theme.rowHeight);
@@ -471,9 +497,14 @@ export class MouseHandler {
         const lastRange = selection.ranges[selection.ranges.length - 1];
         const { theme } = this.engine;
         const { scrollTop, scrollLeft } = this.engine.viewport.getState();
+        const frozenWidth = this.engine.model.getFrozenWidth();
         const handleSize = 6;
 
-        const gridX = (x - theme.rowHeaderWidth) + scrollLeft;
+        const adjustedX = x - theme.rowHeaderWidth;
+        let gridX = adjustedX;
+        if (adjustedX >= frozenWidth) {
+            gridX += scrollLeft;
+        }
         const gridY = (y - theme.headerHeight) + scrollTop;
 
         let startX = 0;
@@ -547,14 +578,20 @@ export class MouseHandler {
         });
     }
 
-    private completeFill(selection: any, fillRange: any) {
+    private async completeFill(selection: any, fillRange: any) {
         if (selection && fillRange && fillRange.ranges.length > 0) {
             const source = selection.ranges[selection.ranges.length - 1];
             const target = fillRange.ranges[0];
-            this.engine.model.fillData(source, target);
-            this.engine.store.setState({
-                selection: { primary: selection.primary, ranges: [target] }
-            });
+            
+            // Use GridEngine's fillData for optimistic update + backend sync
+            try {
+                await this.engine.fillData(source, target);
+                this.engine.store.setState({
+                    selection: { primary: selection.primary, ranges: [target] }
+                });
+            } catch (error) {
+                console.error('Fill data failed:', error);
+            }
         }
         this.engine.store.setState({ isFilling: false, fillRange: null });
     }

@@ -17,10 +17,16 @@ import { JsonEditorDrawer } from './examples/editors/JsonEditorDrawer';
 // Toggle USE_BACKEND to switch between local and backend modes
 const USE_BACKEND = false; // Set to false to use local mock data
 const BACKEND_URL = 'http://localhost:3001';
-const GRID_ID = '6923d2544e7fc6b3e8710c80'; // From seed-api output
+const GRID_ID = '6923d4a14c6689f76d54a049'; // From seed-api output
 
 // Generate initial data for local mode
-const { columns: initialCols, rows: initialRows } = generateMockData(24, false);
+const { columns: initialCols, rows: initialRows } = generateMockData(20004, false);
+
+// Pin "First Name" for demo (Column Freeze)
+const firstNameCol = initialCols.find(c => c.title === 'First Name');
+if (firstNameCol) {
+    firstNameCol.pinned = true;
+}
 
 // Configure generic header action for Email column
 const emailCol = initialCols.find(c => c.type === 'email');

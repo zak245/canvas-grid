@@ -61,6 +61,7 @@ export interface GridColumn {
         model: string;
     };
     visible: boolean;
+    pinned?: boolean;
     headerAction?: {
         icon: 'play' | 'sparkles' | 'refresh' | 'settings';
         tooltip?: string;

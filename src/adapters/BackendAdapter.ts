@@ -278,13 +278,32 @@ export class BackendAdapter implements DataAdapter {
   }
 
   async bulkUpdateCells(updates: CellUpdate[]): Promise<void> {
-    // Transform updates to use rowIds
-    // This requires the caller to know rowIds or we need to enhance the interface
+    // Transform updates from rowIndex to rowId
+    const transformedUpdates = updates.map(update => {
+      const rowId = this.rowIdCache.get(update.rowIndex);
+      if (!rowId) {
+        console.warn(`[BackendAdapter] Row ${update.rowIndex} not in cache for bulk update`);
+        return null;
+      }
+      return {
+        rowId,
+        columnId: update.columnId,
+        value: update.value,
+      };
+    }).filter(u => u !== null);
+
+    if (transformedUpdates.length === 0) {
+      console.warn('[BackendAdapter] No valid updates to send (all rows missing from cache)');
+      return;
+    }
+
+    console.log(`[BackendAdapter] Bulk updating ${transformedUpdates.length} cells`);
+    
     await this.request(
       `/grids/${this.config.gridId}/cells/bulk-update`,
       {
         method: 'POST',
-        body: JSON.stringify({ updates }),
+        body: JSON.stringify({ updates: transformedUpdates }),
       }
     );
   }

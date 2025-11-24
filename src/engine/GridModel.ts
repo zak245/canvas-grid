@@ -32,7 +32,14 @@ export class GridModel {
     }
 
     getVisibleColumns(): GridColumn[] {
-        return this.columns.filter(col => col.visible !== false);
+        // Filter and Sort to ensure pinned columns are always first
+        return this.columns
+            .filter(col => col.visible !== false)
+            .sort((a, b) => {
+                if (a.pinned && !b.pinned) return -1;
+                if (!a.pinned && b.pinned) return 1;
+                return 0;
+            });
     }
 
     getColumn(index: number): GridColumn | undefined {
@@ -184,12 +191,19 @@ export class GridModel {
     
     // ===== NEW: COLUMN OPERATIONS =====
     
+    getFrozenWidth(): number {
+        return this.getVisibleColumns()
+            .filter(c => c.pinned)
+            .reduce((sum, c) => sum + c.width, 0);
+    }
+
     /**
      * Add a column to the model
      * Note: This is called AFTER adapter has created the column
      */
     addColumn(column: GridColumn): void {
         this.columns.push(column);
+        this.sortColumns();
     }
     
     /**
@@ -200,6 +214,10 @@ export class GridModel {
         const column = this.getColumnById(columnId);
         if (column) {
             Object.assign(column, changes);
+            // Re-sort if pinned status changed
+            if (changes.pinned !== undefined) {
+                this.sortColumns();
+            }
         }
     }
     
@@ -214,6 +232,7 @@ export class GridModel {
 
     /**
      * Move a column from one index to another
+     * Handles automatic pinning/unpinning based on drop target
      */
     moveColumn(fromIndex: number, toIndex: number): void {
         if (fromIndex < 0 || fromIndex >= this.columns.length ||
@@ -222,11 +241,45 @@ export class GridModel {
             return;
         }
 
+        // Count pinned columns BEFORE the move
+        // We use this as the threshold
+        const pinnedCount = this.columns.filter(c => c.pinned).length;
+
         const column = this.columns[fromIndex];
+        
         // Remove from old index
         this.columns.splice(fromIndex, 1);
         // Insert at new index
         this.columns.splice(toIndex, 0, column);
+
+        // Update Pinned State
+        // If dropping into the pinned zone (index < pinnedCount), pin it
+        // If dropping out of the pinned zone (index >= pinnedCount), unpin it
+        // Exception: If we are moving a pinned column out, the threshold effectively shifts?
+        // Let's trace:
+        // [P, P, P, U] (Count=3). Move P(0) to 3. -> [P, P, U, P(0)].
+        // If we want P(0) to unpin, toIndex=3. 3 >= 3 -> Unpin. Correct.
+        // [P, P, P, U] (Count=3). Move U(3) to 0. -> [U(3), P, P, P].
+        // toIndex=0. 0 < 3 -> Pin. Correct.
+        
+        if (toIndex < pinnedCount) {
+            column.pinned = true;
+        } else {
+            column.pinned = false;
+        }
+        
+        // We don't need to sort here because we just manually placed it where user wanted.
+        // But strictly speaking, if we rely on sorting, we might want to ensure consistency?
+        // User's drag IS the sort operation.
+    }
+
+    private sortColumns() {
+        // Stable sort: pinned first
+        this.columns.sort((a, b) => {
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
+            return 0;
+        });
     }
     
     // ===== NEW: SORT STATE =====

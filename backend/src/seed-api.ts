@@ -8,9 +8,56 @@
 import { nanoid } from 'nanoid';
 
 const BACKEND_URL = 'http://localhost:3001';
+const TOTAL_ROWS = 10000;
+const BATCH_SIZE = 100; // Create rows in batches for better performance
+
+// Sample data for randomization
+const firstNames = ['Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Avery', 'Quinn', 'Sage', 'Drew', 'Jamie', 'Parker', 'Reese', 'Cameron', 'Blake'];
+const lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez', 'Lee', 'Wang', 'Kim', 'Chen', 'Patel'];
+const industries = ['FinTech', 'SaaS', 'E-commerce', 'Healthcare', 'EdTech', 'MarTech', 'Developer Tools', 'AI/ML', 'Cybersecurity', 'Cloud Platform', 'Database', 'Analytics', 'CRM', 'HR Tech', 'Legal Tech'];
+const companySizes = ['1-10', '11-50', '51-200', '201-500', '501-1000', '1001-5000', '5001-10000', '10000+'];
+const titles = ['CEO', 'CTO', 'VP Sales', 'VP Engineering', 'Director of Operations', 'Head of Marketing', 'Co-founder', 'Chief Revenue Officer', 'VP Product', 'Engineering Manager'];
+const revenues = ['<$1M', '$1M-10M', '$10M-50M', '$50M-100M', '$100M-500M', '$500M-1B', '$1B+'];
+const fundings = ['Bootstrapped', '$1M-5M', '$5M-10M', '$10M-50M', '$50M-100M', '$100M-500M', '$500M+'];
+
+function randomItem<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function generateCompanyName(index: number): string {
+  const prefixes = ['Tech', 'Cloud', 'Data', 'Smart', 'Net', 'Web', 'Digi', 'Cyber', 'Soft', 'App'];
+  const suffixes = ['ify', 'ly', 'io', 'hub', 'lab', 'pro', 'corp', 'sys', 'ware', 'base'];
+  return `${randomItem(prefixes)}${randomItem(suffixes)}${index}`;
+}
+
+function generateDomain(company: string): string {
+  return `${company.toLowerCase().replace(/[0-9]/g, '')}.com`;
+}
+
+function generateRandomRow(index: number): Record<string, any> {
+  const company = generateCompanyName(index);
+  const firstName = randomItem(firstNames);
+  const lastName = randomItem(lastNames);
+  
+  return {
+    col_company: company,
+    col_domain: generateDomain(company),
+    col_industry: randomItem(industries),
+    col_size: randomItem(companySizes),
+    col_firstName: firstName,
+    col_lastName: lastName,
+    col_title: randomItem(titles),
+    col_email: '', // Leave empty for enrichment demo
+    col_phone: '',
+    col_linkedin: '',
+    col_revenue: randomItem(revenues),
+    col_funding: randomItem(fundings),
+    col_notes: `Lead ${index + 1} - ${randomItem(['Hot lead', 'Follow up', 'Demo scheduled', 'Needs enrichment', 'High priority', 'Cold outreach'])}`,
+  };
+}
 
 async function seedViaAPI() {
-  console.log('🌱 Seeding database via API...\n');
+  console.log(`🌱 Seeding database with ${TOTAL_ROWS.toLocaleString()} rows via API...\n`);
 
   // Check if server is running
   try {
@@ -27,129 +74,7 @@ async function seedViaAPI() {
     process.exit(1);
   }
 
-  // Sample data
-  const companies = [
-    {
-      company: 'Stripe',
-      domain: 'stripe.com',
-      industry: 'FinTech',
-      size: '5001-10000',
-      firstName: 'Patrick',
-      lastName: 'Collison',
-      title: 'CEO',
-      revenue: '$500M-1B',
-      funding: '$2.2B',
-      notes: 'High priority - enterprise plan',
-    },
-    {
-      company: 'Notion',
-      domain: 'notion.so',
-      industry: 'SaaS',
-      size: '201-500',
-      firstName: 'Ivan',
-      lastName: 'Zhao',
-      title: 'CEO',
-      revenue: '$100M-500M',
-      funding: '$343M',
-      notes: 'Interested in API integration',
-    },
-    {
-      company: 'Figma',
-      domain: 'figma.com',
-      industry: 'Design Tools',
-      size: '501-1000',
-      firstName: 'Dylan',
-      lastName: 'Field',
-      title: 'CEO',
-      revenue: '$100M-500M',
-      funding: '$333M',
-      notes: 'Demo scheduled for next week',
-    },
-    {
-      company: 'Linear',
-      domain: 'linear.app',
-      industry: 'Project Management',
-      size: '51-200',
-      firstName: 'Karri',
-      lastName: 'Saarinen',
-      title: 'Co-founder',
-      revenue: '$10M-50M',
-      funding: '$52M',
-      notes: 'Hot lead - follow up',
-    },
-    {
-      company: 'Vercel',
-      domain: 'vercel.com',
-      industry: 'Cloud Platform',
-      size: '201-500',
-      firstName: 'Guillermo',
-      lastName: 'Rauch',
-      title: 'CEO',
-      revenue: '$50M-100M',
-      funding: '$313M',
-      notes: 'Enterprise pricing inquiry',
-    },
-    {
-      company: 'Supabase',
-      domain: 'supabase.com',
-      industry: 'Database',
-      size: '51-200',
-      firstName: 'Paul',
-      lastName: 'Copplestone',
-      title: 'CEO',
-      revenue: '$10M-50M',
-      funding: '$116M',
-      notes: 'Need to enrich contact data',
-    },
-    {
-      company: 'Retool',
-      domain: 'retool.com',
-      industry: 'Developer Tools',
-      size: '201-500',
-      firstName: 'David',
-      lastName: 'Hsu',
-      title: 'CEO',
-      revenue: '$50M-100M',
-      funding: '$220M',
-      notes: 'Strategic partnership potential',
-    },
-    {
-      company: 'Plaid',
-      domain: 'plaid.com',
-      industry: 'FinTech',
-      size: '501-1000',
-      firstName: 'Zach',
-      lastName: 'Perret',
-      title: 'CEO',
-      revenue: '$100M-500M',
-      funding: '$734M',
-      notes: 'Warm intro via investor',
-    },
-    {
-      company: 'Airtable',
-      domain: 'airtable.com',
-      industry: 'Database',
-      size: '501-1000',
-      firstName: 'Howie',
-      lastName: 'Liu',
-      title: 'CEO',
-      revenue: '$100M-500M',
-      funding: '$1.4B',
-      notes: 'Competitor - watch closely',
-    },
-    {
-      company: 'Zapier',
-      domain: 'zapier.com',
-      industry: 'Automation',
-      size: '501-1000',
-      firstName: 'Wade',
-      lastName: 'Foster',
-      title: 'CEO',
-      revenue: '$100M-500M',
-      funding: '$1.3M',
-      notes: 'Integration partner opportunity',
-    },
-  ];
+  // We'll generate rows on the fly instead of storing them in memory
 
   // Define columns
   const columns = [
@@ -188,25 +113,14 @@ async function seedViaAPI() {
   const gridId = grid.id;
   console.log(`✓ Grid created: ${gridId}\n`);
 
-  // Create rows via API
-  console.log('Creating rows...');
-  for (let i = 0; i < companies.length; i++) {
-    const company = companies[i];
-    const cells: Record<string, any> = {
-      col_company: company.company,
-      col_domain: company.domain,
-      col_industry: company.industry,
-      col_size: company.size,
-      col_firstName: company.firstName,
-      col_lastName: company.lastName,
-      col_title: company.title,
-      col_email: '',
-      col_phone: '',
-      col_linkedin: '',
-      col_revenue: company.revenue,
-      col_funding: company.funding,
-      col_notes: company.notes,
-    };
+  // Create rows via API (in batches for better performance)
+  console.log(`Creating ${TOTAL_ROWS.toLocaleString()} rows in batches of ${BATCH_SIZE}...\n`);
+  const startTime = Date.now();
+  let successCount = 0;
+  let failCount = 0;
+
+  for (let i = 0; i < TOTAL_ROWS; i++) {
+    const cells = generateRandomRow(i);
 
     const rowResponse = await fetch(`${BACKEND_URL}/api/v1/grids/${gridId}/rows`, {
       method: 'POST',
@@ -214,25 +128,36 @@ async function seedViaAPI() {
       body: JSON.stringify({ cells }),
     });
 
-    if (!rowResponse.ok) {
-      console.error(`Failed to create row ${i + 1}`);
-      continue;
+    if (rowResponse.ok) {
+      successCount++;
+    } else {
+      failCount++;
     }
     
-    console.log(`✓ Row ${i + 1}/${companies.length} created`);
+    // Progress indicator every 100 rows
+    if ((i + 1) % 100 === 0) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const rate = ((i + 1) / (Date.now() - startTime) * 1000).toFixed(0);
+      const eta = ((TOTAL_ROWS - i - 1) / parseFloat(rate)).toFixed(0);
+      console.log(`✓ ${(i + 1).toLocaleString()}/${TOTAL_ROWS.toLocaleString()} rows (${rate}/sec, ETA: ${eta}s, elapsed: ${elapsed}s)`);
+    }
   }
+
+  const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+  const avgRate = (successCount / (Date.now() - startTime) * 1000).toFixed(0);
 
   console.log('');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('✅ Seed completed successfully!');
+  console.log('✅ Seed completed!');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
   console.log(`📊 Grid ID: ${gridId}`);
-  console.log(`📝 Total Rows: ${companies.length}`);
+  console.log(`📝 Total Rows: ${successCount.toLocaleString()} created${failCount > 0 ? `, ${failCount} failed` : ''}`);
+  console.log(`⏱️  Time: ${totalTime}s (avg ${avgRate} rows/sec)`);
   console.log('');
   console.log('💡 Update your frontend:');
   console.log(`   1. Open: src/App.tsx`);
-  console.log(`   2. Line 18: const GRID_ID = '${gridId}';`);
+  console.log(`   2. Line 20: const GRID_ID = '${gridId}';`);
   console.log(`   3. Refresh browser`);
   console.log('');
 }

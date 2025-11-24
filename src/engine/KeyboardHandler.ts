@@ -345,21 +345,11 @@ export class KeyboardHandler {
             startCol = range.start.col;
         }
 
-        // Apply paste data
-        for (let r = 0; r < pasteRows; r++) {
-            const targetRow = startRow + r;
-            if (targetRow >= totalRows) break;
-
-            const rowData = data[r];
-            for (let c = 0; c < rowData.length; c++) {
-                const targetCol = startCol + c;
-                if (targetCol >= columns.length) break;
-
-                const pastedValue = rowData[c];
-                const column = columns[targetCol];
-
-                this.engine.model.setCellValue(targetRow, column.id, pastedValue);
-            }
+        // Use GridEngine's pasteData for optimistic update + backend sync
+        try {
+            await this.engine.pasteData(data, startRow, startCol);
+        } catch (error) {
+            console.error('Paste failed:', error);
         }
 
         // Update selection

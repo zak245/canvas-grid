@@ -1,12 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, ArrowDown, Trash, EyeOff, Pin, Pencil, Settings } from 'lucide-react';
+import { ArrowUp, ArrowDown, Trash, EyeOff, Pin, PinOff, Pencil, Settings } from 'lucide-react';
 
 export interface ColumnMenuProps {
     isOpen: boolean;
     x: number;
     y: number;
     columnId: string;
+    isPinned?: boolean;
     onClose: () => void;
     onAction: (action: string, columnId: string) => void;
 }
@@ -16,6 +17,7 @@ export const ColumnMenu: React.FC<ColumnMenuProps> = ({
     x,
     y,
     columnId,
+    isPinned,
     onClose,
     onAction
 }) => {
@@ -122,10 +124,9 @@ export const ColumnMenu: React.FC<ColumnMenuProps> = ({
                 onClick={() => onAction('hide', columnId)}
             />
             <MenuItem 
-                icon={<Pin size={14} />} 
-                label="Pin Column" 
-                onClick={() => onAction('pin', columnId)}
-                disabled // Future
+                icon={isPinned ? <PinOff size={14} /> : <Pin size={14} />} 
+                label={isPinned ? "Unpin Column" : "Pin Column"} 
+                onClick={() => onAction(isPinned ? 'unpin' : 'pin', columnId)}
             />
             
             <div className="h-px bg-gray-100 my-1" />
