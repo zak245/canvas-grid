@@ -7,6 +7,8 @@ import type { ColumnSort } from '../types/platform';
 import { RowHeaders } from '../components/RowHeaders';
 import { ColumnMenu } from '../components/ColumnMenu';
 import { AddColumnMenu } from '../components/AddColumnMenu';
+import { ColumnSettingsDrawer } from '../components/ColumnSettingsDrawer';
+import { HeaderRenameInput } from '../components/HeaderRenameInput';
 
 interface GridContainerProps {
     columns?: GridColumn[];
@@ -24,12 +26,15 @@ export const GridContainer: React.FC<GridContainerProps> = ({
     onAddColumnClick
 }) => {
     const { canvasRef, engine } = useGridEngine(config);
+    const containerRef = React.useRef<HTMLDivElement>(null);
     const [scrollState, setScrollState] = useState({ scrollLeft: 0, scrollTop: 0 });
     const [visibleRowIndices, setVisibleRowIndices] = useState<number[]>([]);
     
     // Subscribe to store for UI state (Single Source of Truth)
     const activeHeaderMenu = useStore(engine.store, (state) => state.activeHeaderMenu);
     const activeAddColumnMenu = useStore(engine.store, (state) => state.activeAddColumnMenu);
+    const editingHeader = useStore(engine.store, (state) => state.editingHeader);
+    const activeColumnSettings = useStore(engine.store, (state) => state.activeColumnSettings);
     
     const effectiveColumns = config ? engine.model.getVisibleColumns() : columns;
     const allColumns = config ? engine.model.getColumns() : columns;
@@ -110,7 +115,7 @@ export const GridContainer: React.FC<GridContainerProps> = ({
             e.preventDefault();
 
             // Freeze scroll if menu is open
-            if (activeHeaderMenu || activeAddColumnMenu) {
+            if (activeHeaderMenu || activeAddColumnMenu || editingHeader || activeColumnSettings) {
                 return;
             }
 
@@ -126,13 +131,15 @@ export const GridContainer: React.FC<GridContainerProps> = ({
         const canvas = canvasRef.current;
         if (canvas) canvas.addEventListener('wheel', handleWheel, { passive: false });
         return () => canvas?.removeEventListener('wheel', handleWheel);
-    }, [engine, canvasRef, effectiveColumns, effectiveRows, activeHeaderMenu, activeAddColumnMenu]); // Added dependencies
+    }, [engine, canvasRef, effectiveColumns, effectiveRows, activeHeaderMenu, activeAddColumnMenu, editingHeader, activeColumnSettings]); // Added dependencies
 
     // Menu Handlers
     const handleMenuAction = (action: string, columnId: string) => {
         if (action === 'sortAsc') engine.sort(columnId, 'asc');
         if (action === 'sortDesc') engine.sort(columnId, 'desc');
         if (action === 'hide') engine.setColumnVisibility(columnId, false);
+        if (action === 'rename') engine.store.setState({ editingHeader: columnId });
+        if (action === 'settings') engine.store.setState({ activeColumnSettings: columnId });
         // Close via store
         engine.store.setState({ activeHeaderMenu: null });
     };
@@ -150,7 +157,7 @@ export const GridContainer: React.FC<GridContainerProps> = ({
     };
 
     return (
-        <div className="w-full h-full relative overflow-hidden bg-white">
+        <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-white">
             {/* Top-left corner */}
             <div
                 className="absolute top-0 left-0 bg-gray-50 border-r border-b border-gray-200 z-20"
@@ -194,6 +201,52 @@ export const GridContainer: React.FC<GridContainerProps> = ({
                     onCreateNew={handleCreateColumn}
                 />
             )}
+
+            {editingHeader && (() => {
+                const visibleCols = engine.model.getVisibleColumns();
+                const index = visibleCols.findIndex(c => c.id === editingHeader);
+                if (index === -1 || !containerRef.current) return null;
+                
+                const rect = containerRef.current.getBoundingClientRect();
+                let x = engine.theme.rowHeaderWidth - engine.viewport.getState().scrollLeft;
+                for (let i = 0; i < index; i++) x += visibleCols[i].width;
+                
+                // Absolute Screen Coordinates
+                const screenX = rect.left + x;
+                const screenY = rect.top; // Header is at top of container
+                
+                const column = engine.model.getColumns().find(c => c.id === editingHeader);
+                if (!column) return null;
+
+                return (
+                    <HeaderRenameInput
+                        x={screenX}
+                        y={screenY}
+                        width={visibleCols[index].width}
+                        height={engine.theme.headerHeight}
+                        initialValue={column.title}
+                        onSave={(newTitle) => {
+                            engine.updateColumn(editingHeader, { title: newTitle });
+                            engine.store.setState({ editingHeader: null });
+                        }}
+                        onCancel={() => engine.store.setState({ editingHeader: null })}
+                    />
+                );
+            })()}
+
+            {activeColumnSettings && (() => {
+                const column = engine.model.getColumns().find(c => c.id === activeColumnSettings);
+                if (!column) return null;
+
+                return (
+                    <ColumnSettingsDrawer
+                        isOpen={true}
+                        column={column}
+                        onClose={() => engine.store.setState({ activeColumnSettings: null })}
+                        onUpdate={(updates) => engine.updateColumn(activeColumnSettings, updates)}
+                    />
+                );
+            })()}
         </div>
     );
 };

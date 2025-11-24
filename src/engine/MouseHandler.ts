@@ -19,7 +19,7 @@ export class MouseHandler {
 
     handleMouseDown = (e: MouseEvent) => {
         const { theme } = this.engine;
-        const { scrollTop, scrollLeft } = this.engine.viewport.getState();
+        const { scrollTop } = this.engine.viewport.getState();
         
         // 1. Check for Header Interaction
         if (e.offsetY < theme.headerHeight) {
@@ -301,6 +301,15 @@ export class MouseHandler {
                 activeHeaderMenu: { colId: column.id, x: menuX, y: menuY },
                 activeAddColumnMenu: null
             });
+            return;
+        }
+
+        // 3b. Check Action Button Click
+        if (column.headerAction && xInCol >= column.width - 50 && xInCol < column.width - 30) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.engine.store.setState({ activeHeaderMenu: null, activeAddColumnMenu: null });
+            this.engine.lifecycle.onColumnAction?.(column.id, column.headerAction.icon);
             return;
         }
 

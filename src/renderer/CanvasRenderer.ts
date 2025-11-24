@@ -1,5 +1,4 @@
 import { GridEngine } from '../engine/GridEngine';
-import { GridTheme } from '../types/grid';
 import { CellFormatter } from '../utils/CellFormatter';
 
 export class CanvasRenderer {
@@ -250,9 +249,132 @@ export class CanvasRenderer {
         this.drawErrorTooltip(ctx, engine);
     }
 
+    private drawIcon(ctx: CanvasRenderingContext2D, icon: string, x: number, y: number, size: number, color: string) {
+        ctx.save();
+        ctx.translate(x, y);
+        const scale = size / 24;
+        ctx.scale(scale, scale);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        
+        if (icon === 'play') {
+            ctx.moveTo(8, 5);
+            ctx.lineTo(19, 12);
+            ctx.lineTo(8, 19);
+            ctx.fill();
+        } else if (icon === 'sparkles' || icon === 'ai') {
+            ctx.moveTo(12, 1);
+            ctx.quadraticCurveTo(15, 9, 23, 12);
+            ctx.quadraticCurveTo(15, 15, 12, 23);
+            ctx.quadraticCurveTo(9, 15, 1, 12);
+            ctx.quadraticCurveTo(9, 9, 12, 1);
+            ctx.fill();
+            // Small star
+            ctx.moveTo(18, 2);
+            ctx.lineTo(19, 5);
+            ctx.lineTo(22, 6);
+            ctx.lineTo(19, 7);
+            ctx.lineTo(18, 10);
+            ctx.lineTo(17, 7);
+            ctx.lineTo(14, 6);
+            ctx.lineTo(17, 5);
+            ctx.fill();
+        } else if (icon === 'refresh') {
+            ctx.arc(12, 12, 6, 0, Math.PI * 1.5);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(12, 6);
+            ctx.lineTo(18, 6);
+            ctx.lineTo(15, 3);
+            ctx.fill();
+        } else if (icon === 'settings') {
+            ctx.arc(12, 12, 4, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.arc(12, 12, 7, 0, Math.PI * 2);
+            ctx.setLineDash([3, 3]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        } else if (icon === 'text') {
+            // 'Aa' simplified or Text Lines
+            ctx.fillRect(4, 6, 16, 2);
+            ctx.fillRect(4, 11, 12, 2);
+            ctx.fillRect(4, 16, 10, 2);
+        } else if (icon === 'number') {
+            // Hash #
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(9, 4); ctx.lineTo(9, 20);
+            ctx.moveTo(15, 4); ctx.lineTo(15, 20);
+            ctx.moveTo(5, 9); ctx.lineTo(19, 9);
+            ctx.moveTo(5, 15); ctx.lineTo(19, 15);
+            ctx.stroke();
+        } else if (icon === 'date') {
+            // Calendar
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(4, 6, 16, 14);
+            ctx.beginPath();
+            ctx.moveTo(8, 3); ctx.lineTo(8, 7);
+            ctx.moveTo(16, 3); ctx.lineTo(16, 7);
+            ctx.moveTo(4, 10); ctx.lineTo(20, 10);
+            ctx.stroke();
+        } else if (icon === 'boolean') {
+            // Checkbox
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(4, 4, 16, 16);
+            ctx.beginPath();
+            ctx.moveTo(8, 12); ctx.lineTo(11, 15); ctx.lineTo(16, 9);
+            ctx.stroke();
+        } else if (icon === 'email') {
+            // Envelope
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(3, 6, 18, 12);
+            ctx.beginPath();
+            ctx.moveTo(3, 6); ctx.lineTo(12, 13); ctx.lineTo(21, 6);
+            ctx.stroke();
+        } else if (icon === 'url') {
+            // Link
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(9, 12, 4, 0.5 * Math.PI, 1.5 * Math.PI); // Left loop
+            ctx.moveTo(9, 8); ctx.lineTo(15, 8);
+            ctx.moveTo(9, 16); ctx.lineTo(15, 16);
+            ctx.arc(15, 12, 4, 1.5 * Math.PI, 0.5 * Math.PI); // Right loop
+            ctx.stroke();
+            // Simplified link: Just circle and line
+            // Override:
+            ctx.beginPath();
+            ctx.moveTo(6, 12); ctx.lineTo(10, 12);
+            ctx.moveTo(14, 12); ctx.lineTo(18, 12);
+            ctx.stroke();
+            ctx.strokeRect(8, 10, 8, 4); // simple link
+        } else if (icon === 'select') {
+             // List
+            ctx.fillRect(4, 6, 16, 2);
+            ctx.fillRect(4, 11, 16, 2);
+            ctx.fillRect(4, 16, 16, 2);
+            ctx.fillStyle = color;
+             // Arrow down small
+            ctx.beginPath();
+            ctx.moveTo(18, 16); ctx.lineTo(21, 16); ctx.lineTo(19.5, 19);
+            ctx.fill();
+        }
+        
+        ctx.restore();
+    }
+
     private drawHeaders(ctx: CanvasRenderingContext2D, engine: GridEngine) {
         const { theme } = engine;
-        const { scrollLeft, width } = engine.viewport.getState();
+        const { scrollLeft } = engine.viewport.getState();
         const visibleColumns = engine.model.getVisibleColumns();
         const sortState = engine.model.getSortState();
         const reorderState = engine.store.getState().reorderState;
@@ -305,19 +427,58 @@ export class CanvasRenderer {
                 ctx.textBaseline = 'middle';
                 ctx.textAlign = 'left';
                 
+                const hasAction = !!visualCol.headerAction;
                 const textPadding = 8;
-                const iconSpace = 28;
-                const availableWidth = originalCol.width - (textPadding * 2) - iconSpace;
+                const menuIconSpace = 28;
+                const actionIconSpace = hasAction ? 24 : 0;
+                const typeIconSpace = 20; // NEW: Space for type icon
+                const availableWidth = originalCol.width - (textPadding * 2) - menuIconSpace - actionIconSpace - typeIconSpace;
                 
                 ctx.save();
                 ctx.beginPath();
-                ctx.rect(x + textPadding, 0, availableWidth, theme.headerHeight);
+                ctx.rect(x + textPadding, 0, availableWidth + typeIconSpace, theme.headerHeight); // Allow clipping to include icon
                 ctx.clip();
-                ctx.fillText(visualCol.title, x + textPadding, theme.headerHeight / 2);
+                
+                // 0. Draw Type Icon
+                this.drawIcon(
+                    ctx, 
+                    visualCol.type || 'text', 
+                    x + textPadding, 
+                    theme.headerHeight / 2 - 7, 
+                    14, 
+                    '#9ca3af'
+                );
+
+                // Draw Text (Shifted)
+                ctx.fillText(visualCol.title, x + textPadding + typeIconSpace, theme.headerHeight / 2);
                 ctx.restore();
 
-                // Icons (Sort/Menu) - Only if not reordering
+                // Icons (Action / Sort / Menu) - Only if not reordering
                 if (!reorderState) {
+                    // 1. Action Icon (if present)
+                    if (hasAction && visualCol.headerAction) {
+                        const actionX = x + originalCol.width - 48; // 20 (menu) + 28 (action)
+                        const actionY = theme.headerHeight / 2 - 8; // 16x16 center
+                        
+                        // Check Hover for color
+                        const hoverPos = engine.store.getState().hoverPosition;
+                        let isActionHovered = false;
+                        if (hoverPos && hoverPos.y < theme.headerHeight) {
+                             const relativeHoverX = hoverPos.x - theme.rowHeaderWidth + scrollLeft;
+                             if (relativeHoverX >= actionX - 2 && relativeHoverX < actionX + 18) isActionHovered = true;
+                        }
+                        
+                        this.drawIcon(
+                            ctx, 
+                            visualCol.headerAction.icon, 
+                            actionX, 
+                            actionY, 
+                            16, 
+                            isActionHovered ? '#3b82f6' : '#6b7280'
+                        );
+                    }
+
+                    // 2. Sort / Menu Icon
                     const sort = sortState.find(s => s.columnId === visualCol.id);
                     const iconX = x + originalCol.width - 20;
                     const iconY = theme.headerHeight / 2;

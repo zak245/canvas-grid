@@ -11,6 +11,15 @@ import { GridEngine } from './engine/GridEngine';
 // Generate initial data - 20 rows for testing add row experience
 const { columns: initialCols, rows: initialRows } = generateMockData(24, false);
 
+// Configure generic header action for Email column
+const emailCol = initialCols.find(c => c.type === 'email');
+if (emailCol) {
+    emailCol.headerAction = {
+        icon: 'sparkles',
+        tooltip: 'Verify Emails'
+    };
+}
+
 // NEW: Create grid config using platform foundation
 const gridConfig: Partial<GridConfig> = {
     dataSource: {
@@ -82,6 +91,10 @@ const gridConfig: Partial<GridConfig> = {
         },
         onError: (error) => {
             console.error('Grid error:', error);
+        },
+        onColumnAction: (columnId, action) => {
+            console.log(`Action triggered: ${action} on ${columnId}`);
+            alert(`Generic Action Triggered!\n\nColumn: ${columnId}\nAction: ${action}\n\n(Consumer can wire this to API calls, verification, etc.)`);
         }
     },
     ui: {

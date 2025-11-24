@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, ArrowDown, Trash, EyeOff, Pin } from 'lucide-react';
+import { ArrowUp, ArrowDown, Trash, EyeOff, Pin, Pencil, Settings } from 'lucide-react';
 
 export interface ColumnMenuProps {
     isOpen: boolean;
@@ -99,6 +99,19 @@ export const ColumnMenu: React.FC<ColumnMenuProps> = ({
                 icon={<ArrowDown size={14} />} 
                 label="Sort Descending" 
                 onClick={() => onAction('sortDesc', columnId)} 
+            />
+            
+            <div className="h-px bg-gray-100 my-1" />
+
+            <MenuItem 
+                icon={<Pencil size={14} />} 
+                label="Rename Column" 
+                onClick={() => onAction('rename', columnId)} 
+            />
+            <MenuItem 
+                icon={<Settings size={14} />} 
+                label="Column Settings" 
+                onClick={() => onAction('settings', columnId)} 
             />
             
             <div className="h-px bg-gray-100 my-1" />

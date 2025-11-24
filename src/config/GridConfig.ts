@@ -232,6 +232,7 @@ export interface LifecycleHooks {
   onColumnResize?: (columnId: string, width: number) => void;
   onColumnReorder?: (columnId: string, oldIndex: number, newIndex: number) => void;
   onColumnPin?: (columnId: string, pin: 'left' | 'right' | null) => void;
+  onColumnAction?: (columnId: string, actionId: string) => void;
   
   // Cells
   onBeforeCellEdit?: (rowIndex: number, columnId: string) => boolean;

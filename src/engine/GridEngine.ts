@@ -7,9 +7,9 @@ import { AIStreamer } from '../services/AIStreamer';
 import type { GridSelection, GridTheme, GridRow, GridColumn, CellValue } from '../types/grid';
 import type { GridConfig, LifecycleHooks } from '../config/GridConfig';
 import type { DataAdapter } from '../adapters/DataAdapter';
-import type { ColumnSort, CellChange } from '../types/platform';
+import type { ColumnSort } from '../types/platform';
 import { LocalAdapter } from '../adapters/LocalAdapter';
-import { mergeConfig, DEFAULT_CONFIG, validateConfig } from '../config/GridConfig';
+import { mergeConfig, validateConfig } from '../config/GridConfig';
 
 export interface GridEngineState {
     selection: GridSelection | null;
@@ -28,6 +28,8 @@ export interface GridEngineState {
     // NEW: Overlay State (Single Source of Truth)
     activeHeaderMenu: { colId: string, x: number, y: number } | null;
     activeAddColumnMenu: { x: number, y: number } | null;
+    editingHeader: string | null;
+    activeColumnSettings: string | null;
 }
 
 export class GridEngine {
@@ -40,7 +42,7 @@ export class GridEngine {
     // Platform components (NEW)
     private config: GridConfig | null = null;
     private adapter: DataAdapter | null = null;
-    private lifecycle: LifecycleHooks = {};
+    public lifecycle: LifecycleHooks = {};
 
     // Rendering
     private canvas: HTMLCanvasElement | null = null;
@@ -109,6 +111,8 @@ export class GridEngine {
             reorderState: null,
             activeHeaderMenu: null,
             activeAddColumnMenu: null,
+            editingHeader: null,
+            activeColumnSettings: null,
         }));
 
         // Call initialization hook
@@ -138,6 +142,8 @@ export class GridEngine {
             reorderState: null,
             activeHeaderMenu: null,
             activeAddColumnMenu: null,
+            editingHeader: null,
+            activeColumnSettings: null,
         }));
     }
 
@@ -690,6 +696,33 @@ export class GridEngine {
     }
 
     /**
+     * Update a column properties
+     */
+    async updateColumn(columnId: string, updates: Partial<GridColumn>): Promise<void> {
+        if (!this.adapter) {
+            throw new Error('Adapter not initialized. Use config-based constructor.');
+        }
+
+        // Update model
+        const columns = this.model.getColumns();
+        const colIndex = columns.findIndex(c => c.id === columnId);
+        if (colIndex === -1) return;
+
+        // Apply updates
+        const updatedColumn = { ...columns[colIndex], ...updates };
+        columns[colIndex] = updatedColumn;
+        
+        this.model.setColumns([...columns]); // Trigger update
+        
+        // Notify subscribers
+        this.notifyDataChange();
+        this.render();
+
+        // TODO: Call adapter if needed for backend persistence
+        // await this.adapter.updateColumn(columnId, updates);
+    }
+
+    /**
      * Add a column
      */
     async addColumn(column: GridColumn): Promise<GridColumn> {
@@ -703,7 +736,7 @@ export class GridEngine {
             throw new Error('Column addition cancelled by lifecycle hook');
         }
 
-        const columnToAdd = processedColumn || column;
+        const columnToAdd = processedColumn ? { ...column, ...processedColumn } : column;
 
         try {
             // Call adapter
