@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowUp, ArrowDown, Trash, EyeOff, Pin, PinOff, Pencil, Settings } from 'lucide-react';
+import { ArrowUp, ArrowDown, Trash, EyeOff, Pin, PinOff, Pencil, Settings, Layers, Ungroup } from 'lucide-react';
 
 export interface ColumnMenuProps {
     isOpen: boolean;
@@ -8,6 +8,7 @@ export interface ColumnMenuProps {
     y: number;
     columnId: string;
     isPinned?: boolean;
+    isGrouped?: boolean; // New prop
     onClose: () => void;
     onAction: (action: string, columnId: string) => void;
 }
@@ -18,6 +19,7 @@ export const ColumnMenu: React.FC<ColumnMenuProps> = ({
     y,
     columnId,
     isPinned,
+    isGrouped,
     onClose,
     onAction
 }) => {
@@ -103,6 +105,14 @@ export const ColumnMenu: React.FC<ColumnMenuProps> = ({
                 onClick={() => onAction('sortDesc', columnId)} 
             />
             
+            <div className="h-px bg-gray-100 my-1" />
+
+            <MenuItem 
+                icon={isGrouped ? <Ungroup size={14} /> : <Layers size={14} />} 
+                label={isGrouped ? "Ungroup" : "Group by this column"} 
+                onClick={() => onAction(isGrouped ? 'ungroup' : 'group', columnId)} 
+            />
+
             <div className="h-px bg-gray-100 my-1" />
 
             <MenuItem 

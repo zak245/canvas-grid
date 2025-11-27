@@ -1,4 +1,4 @@
-import { GridEngine } from '../engine/GridEngine';
+import { GridEngine } from '../core/engine/GridEngine';
 
 export class AIStreamer {
     private engine: GridEngine;

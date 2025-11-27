@@ -1,0 +1,112 @@
+import { Meta } from '@storybook/blocks';
+
+<Meta title="Introduction" />
+
+# Grid Engine
+
+A high-performance, opinionated grid engine for building spreadsheet-like interfaces.
+
+## Features
+
+- **🚀 High Performance**: Canvas-based rendering with virtualization for 100K+ rows at 60fps
+- **📦 Batteries Included**: Built-in cell types, editors, and interactions
+- **🎨 Customizable**: Theming support and pluggable renderers
+- **⚛️ React Ready**: Hooks and components for easy React integration
+- **📱 Touch Support**: Works on mobile and tablet devices
+- **⌨️ Keyboard Navigation**: Full keyboard support for power users
+
+## Installation
+
+```bash
+npm install @grid-engine/core
+```
+
+## Quick Start
+
+### Vanilla JavaScript
+
+```typescript
+import { createGridEngine } from '@grid-engine/core';
+
+const engine = createGridEngine({
+  columns: [
+    { id: 'name', title: 'Name', type: 'text', width: 150 },
+    { id: 'email', title: 'Email', type: 'email', width: 200 },
+    { id: 'age', title: 'Age', type: 'number', width: 80 },
+  ],
+  rows: [
+    {
+      id: 'row-1',
+      cells: new Map([
+        ['name', { value: 'John Doe', displayValue: 'John Doe' }],
+        ['email', { value: 'john@example.com', displayValue: 'john@example.com' }],
+        ['age', { value: 30, displayValue: '30' }],
+      ]),
+    },
+  ],
+});
+
+// Mount to a canvas element
+engine.mount(document.getElementById('canvas'));
+```
+
+### React
+
+```tsx
+import { useGridEngine, GridContainer } from '@grid-engine/core/react';
+
+function MyGrid() {
+  const { canvasRef, engine } = useGridEngine({
+    columns: [...],
+    rows: [...],
+  });
+
+  return (
+    <div style={{ width: '100%', height: 400 }}>
+      <canvas ref={canvasRef} />
+    </div>
+  );
+}
+```
+
+## Built-in Cell Types
+
+| Type | Description |
+|------|-------------|
+| `text` | Plain text with optional max length |
+| `number` | Numeric values with formatting (currency, percent, etc.) |
+| `date` | Date/time with picker |
+| `boolean` | Checkbox |
+| `select` | Single or multi-select dropdown |
+| `email` | Email with validation |
+| `url` | URL with validation |
+| `phone` | Phone number with formatting |
+| `progress` | Progress bar |
+| `linked` | Linked records with search |
+
+## Events
+
+Subscribe to grid events:
+
+```typescript
+// Selection changes
+engine.on('selection:change', ({ selection }) => {
+  console.log('Selected:', selection);
+});
+
+// Cell edits
+engine.on('cell:change', ({ rowIndex, columnId, value, oldValue }) => {
+  console.log(`Cell changed: ${columnId} = ${value}`);
+});
+
+// Data loaded
+engine.on('data:load', () => {
+  console.log('Data loaded');
+});
+```
+
+## Explore
+
+Use the sidebar to explore different features and examples.
+
+

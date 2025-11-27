@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { X, Type, Hash, Sparkles } from 'lucide-react';
-import type { GridColumn } from '../types/grid';
+import { X, Type, Hash, Calendar, CheckSquare, List, Mail, Link, Phone, BarChart2 } from 'lucide-react';
+import type { GridColumn, CellType } from '../core/types/grid';
 
 interface AddColumnModalProps {
     isOpen: boolean;
@@ -8,10 +8,21 @@ interface AddColumnModalProps {
     onSubmit: (column: GridColumn) => void;
 }
 
+const COLUMN_TYPES: { type: CellType; label: string; icon: React.ReactNode }[] = [
+    { type: 'text', label: 'Text', icon: <Type size={20} /> },
+    { type: 'number', label: 'Number', icon: <Hash size={20} /> },
+    { type: 'date', label: 'Date', icon: <Calendar size={20} /> },
+    { type: 'boolean', label: 'Checkbox', icon: <CheckSquare size={20} /> },
+    { type: 'select', label: 'Select', icon: <List size={20} /> },
+    { type: 'email', label: 'Email', icon: <Mail size={20} /> },
+    { type: 'url', label: 'URL', icon: <Link size={20} /> },
+    { type: 'phone', label: 'Phone', icon: <Phone size={20} /> },
+    { type: 'progress', label: 'Progress', icon: <BarChart2 size={20} /> },
+];
+
 export const AddColumnModal: React.FC<AddColumnModalProps> = ({ isOpen, onClose, onSubmit }) => {
     const [title, setTitle] = useState('');
-    const [type, setType] = useState<'text' | 'number' | 'ai'>('text');
-    const [aiPrompt, setAiPrompt] = useState('');
+    const [selectedType, setSelectedType] = useState<CellType>('text');
 
     if (!isOpen) return null;
 
@@ -22,15 +33,13 @@ export const AddColumnModal: React.FC<AddColumnModalProps> = ({ isOpen, onClose,
             id: `col_${Date.now()}`,
             title,
             width: 200,
-            type,
+            type: selectedType,
             visible: true,
-            ...(type === 'ai' && { aiConfig: { prompt: aiPrompt, model: 'gpt-4' } })
         };
 
         onSubmit(newColumn);
         setTitle('');
-        setType('text');
-        setAiPrompt('');
+        setSelectedType('text');
         onClose();
     };
 
@@ -62,53 +71,28 @@ export const AddColumnModal: React.FC<AddColumnModalProps> = ({ isOpen, onClose,
                     <div className="space-y-2">
                         <label className="text-sm font-medium text-gray-700">Column Type</label>
                         <div className="grid grid-cols-3 gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setType('text')}
-                                className={`flex flex-col items-center gap-2 p-3 border rounded-lg transition-all ${type === 'text' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                            {COLUMN_TYPES.map(({ type, label, icon }) => (
+                                <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() => setSelectedType(type)}
+                                    className={`flex flex-col items-center gap-2 p-3 border rounded-lg transition-all ${
+                                        selectedType === type 
+                                            ? 'border-blue-500 bg-blue-50 text-blue-600' 
+                                            : 'border-gray-200 hover:border-gray-300 text-gray-600'
                                     }`}
-                            >
-                                <Type size={20} />
-                                <span className="text-xs">Text</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setType('number')}
-                                className={`flex flex-col items-center gap-2 p-3 border rounded-lg transition-all ${type === 'number' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                                    }`}
-                            >
-                                <Hash size={20} />
-                                <span className="text-xs">Number</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setType('ai')}
-                                className={`flex flex-col items-center gap-2 p-3 border rounded-lg transition-all ${type === 'ai' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'
-                                    }`}
-                            >
-                                <Sparkles size={20} />
-                                <span className="text-xs">AI</span>
-                            </button>
+                                >
+                                    {icon}
+                                    <span className="text-xs">{label}</span>
+                                </button>
+                            ))}
                         </div>
                     </div>
-
-                    {type === 'ai' && (
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">AI Prompt</label>
-                            <textarea
-                                value={aiPrompt}
-                                onChange={(e) => setAiPrompt(e.target.value)}
-                                placeholder="e.g. Find the company email for this person"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all resize-none"
-                                rows={3}
-                            />
-                        </div>
-                    )}
 
                     <div className="flex justify-end pt-2">
                         <button
                             type="submit"
-                            disabled={!title || (type === 'ai' && !aiPrompt)}
+                            disabled={!title}
                             className="px-4 py-2 bg-black text-white rounded-lg font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
                             Create Column
@@ -119,3 +103,5 @@ export const AddColumnModal: React.FC<AddColumnModalProps> = ({ isOpen, onClose,
         </div>
     );
 };
+
+

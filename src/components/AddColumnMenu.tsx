@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Plus, ArrowLeft, Check } from 'lucide-react';
-import { GridColumn } from '../types/grid';
+import type { GridColumn } from '../core/types/grid';
 
 interface AddColumnMenuProps {
     isOpen: boolean;
@@ -70,7 +70,7 @@ export const AddColumnMenu: React.FC<AddColumnMenuProps> = ({
         if (!newColTitle.trim()) return;
         
         const newColumn: GridColumn = {
-            id: `col_${Date.now()}`,
+            id: `col_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
             title: newColTitle,
             type: newColType,
             width: 200,
@@ -195,7 +195,11 @@ export const AddColumnMenu: React.FC<AddColumnMenuProps> = ({
                         </div>
 
                         <button
-                            onClick={handleCreate}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleCreate();
+                            }}
                             disabled={!newColTitle.trim()}
                             className="w-full flex items-center justify-center gap-2 bg-black text-white py-1.5 rounded-md text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-2"
                         >

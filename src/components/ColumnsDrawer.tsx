@@ -1,5 +1,5 @@
 import React from 'react';
-import { GridColumn } from '../types/grid';
+import type { GridColumn } from '../core/types/grid';
 import { X, GripVertical, Eye, EyeOff, Plus } from 'lucide-react';
 
 interface ColumnsDrawerProps {
@@ -82,5 +82,6 @@ export const ColumnsDrawer: React.FC<ColumnsDrawerProps> = ({
         </>
     );
 };
+
 
 

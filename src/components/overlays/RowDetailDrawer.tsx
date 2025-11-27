@@ -1,6 +1,9 @@
-import React from 'react';
-import { GridEngine } from '../../engine/GridEngine';
+import React, { useEffect, useRef, useState } from 'react';
+import { GridEngine } from '../../core/engine/GridEngine';
 import { X } from 'lucide-react';
+import { cellTypeRegistry } from '../../core/cell-types/registry';
+import type { EditorContext, CellTypeName } from '../../core/cell-types/types';
+import type { GridRow, GridColumn } from '../../core/types/grid';
 
 interface RowDetailDrawerProps {
     engine: GridEngine;
@@ -8,8 +11,98 @@ interface RowDetailDrawerProps {
     onClose: () => void;
 }
 
+interface DrawerFieldProps {
+    engine: GridEngine;
+    row: GridRow;
+    column: GridColumn;
+    rowIndex: number;
+}
+
+const DrawerField: React.FC<DrawerFieldProps> = ({ engine, row, column, rowIndex }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [isEditing, setIsEditing] = useState(false);
+    const editorRef = useRef<any>(null);
+
+    const cell = row.cells.get(column.id);
+    const value = cell?.value;
+    const cellType = cellTypeRegistry.get(column.type as CellTypeName);
+
+    useEffect(() => {
+        if (!isEditing || !containerRef.current) return;
+
+        // Create Editor Context
+        const rect = containerRef.current.getBoundingClientRect();
+        const context: EditorContext = {
+            container: containerRef.current,
+            value,
+            bounds: {
+                x: 0,
+                y: 0,
+                width: rect.width,
+                height: rect.height,
+            },
+            options: column.typeOptions,
+            theme: engine.theme,
+            rowIndex,
+            columnId: column.id,
+            onCommit: (newValue, moveNext) => {
+                engine.updateCell(rowIndex, column.id, newValue);
+                setIsEditing(false);
+            },
+            onCancel: () => {
+                setIsEditing(false);
+            },
+            // onChange is optional for immediate feedback, but we rely on commit
+        };
+
+        const editor = cellType.createEditor(context);
+        editorRef.current = editor;
+        editor.mount();
+        
+        // Focus editor after mount
+        setTimeout(() => {
+            editor.focus();
+        }, 10);
+
+        return () => {
+            editor.unmount();
+            editorRef.current = null;
+        };
+    }, [isEditing, engine, value, column, rowIndex, cellType]);
+
+    // Format value for display when not editing (or underneath overlay editors)
+    const displayValue = cellType.format(value, column.typeOptions);
+
+    return (
+        <div className="space-y-1">
+            <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">{column.title}</div>
+            <div 
+                ref={containerRef} 
+                className={`relative h-10 w-full bg-white rounded border ${isEditing ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200 hover:border-gray-300'} transition-colors cursor-text`}
+                style={{ minHeight: '40px' }}
+                onClick={() => {
+                    if (!isEditing) setIsEditing(true);
+                }}
+            >
+                {/* 
+                    Display Value 
+                    - For 'inline' editors (Text), the editor covers this completely.
+                    - For 'overlay' editors (Select, Date), the editor appears detached, so this remains visible.
+                */}
+                <div className="absolute inset-0 p-2 flex items-center text-sm text-gray-800 pointer-events-none">
+                    {value !== undefined && value !== null && value !== '' ? (
+                        <span className="truncate w-full">{displayValue}</span>
+                    ) : (
+                        <span className="text-gray-400 italic">Empty</span>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 export const RowDetailDrawer: React.FC<RowDetailDrawerProps> = ({ engine, rowIndex, onClose }) => {
-    const row = engine.model.getRow(rowIndex);
+    const row = engine.rows.getRow(rowIndex);
     const columns = engine.model.getVisibleColumns();
 
     if (!row) return null;
@@ -23,20 +116,15 @@ export const RowDetailDrawer: React.FC<RowDetailDrawerProps> = ({ engine, rowInd
                 </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {columns.map(col => {
-                    const cell = row.cells.get(col.id);
-                    const value = cell?.value;
-                    const displayValue = cell?.displayValue || String(value ?? '');
-                    
-                    return (
-                        <div key={col.id} className="space-y-1">
-                            <div className="text-xs font-medium text-gray-500 uppercase tracking-wide">{col.title}</div>
-                            <div className="p-2 bg-gray-50 rounded border border-gray-200 text-sm text-gray-800 min-h-[36px] flex items-center">
-                                {value !== undefined && value !== null && value !== '' ? displayValue : <span className="text-gray-400 italic">Empty</span>}
-                            </div>
-                        </div>
-                    );
-                })}
+                {columns.map((col) => (
+                    <DrawerField 
+                        key={col.id} 
+                        engine={engine} 
+                        row={row} 
+                        column={col} 
+                        rowIndex={rowIndex} 
+                    />
+                ))}
             </div>
             <div className="p-4 border-t border-gray-100 bg-gray-50">
                 <button 
@@ -49,4 +137,3 @@ export const RowDetailDrawer: React.FC<RowDetailDrawerProps> = ({ engine, rowInd
         </div>
     );
 };
-

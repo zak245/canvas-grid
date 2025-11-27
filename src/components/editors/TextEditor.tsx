@@ -1,5 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { EditorProps } from '../../types/grid';
+
+// EditorProps interface for React-based editors
+export interface EditorProps {
+    value: any;
+    width: number;
+    height: number;
+    onCommit: (value: any) => void;
+    onCancel: () => void;
+    className?: string;
+}
 
 export const TextEditor: React.FC<EditorProps> = ({
     value,
@@ -21,7 +30,7 @@ export const TextEditor: React.FC<EditorProps> = ({
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
-            onCommit(currentValue, true);
+            onCommit(currentValue);
         } else if (e.key === 'Escape') {
             onCancel();
         }

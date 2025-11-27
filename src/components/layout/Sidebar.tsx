@@ -30,7 +30,8 @@ const NavItem: React.FC<{ icon: React.ReactNode; active?: boolean }> = ({ icon, 
                 : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
             }`}
     >
-        {/* @ts-ignore */}
-        {React.cloneElement(icon as React.ReactElement, { size: 20 })}
+        {React.isValidElement(icon) 
+            ? React.cloneElement(icon as React.ReactElement<{ size?: number }>, { size: 20 })
+            : icon}
     </button>
 );

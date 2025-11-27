@@ -1,7 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import { GridColumn } from '../types/grid';
+import type { GridColumn } from '../core/types/grid';
 
 interface ColumnSettingsDrawerProps {
     isOpen: boolean;
@@ -80,4 +80,5 @@ export const ColumnSettingsDrawer: React.FC<ColumnSettingsDrawerProps> = ({
         document.body
     );
 };
+
 

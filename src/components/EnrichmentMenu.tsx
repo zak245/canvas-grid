@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react';
-import { BackendAdapter } from '../adapters';
+import { BackendAdapter } from '../core/adapters/BackendAdapter';
 import { Sparkles, Building2, User, BrainCircuit, Loader2 } from 'lucide-react';
 
 interface EnrichmentMenuProps {
@@ -51,7 +51,7 @@ export function EnrichmentMenu({
             }
 
             // Wait for completion
-            await adapter.waitForJob(result.jobId, (status) => {
+            await adapter.waitForJob(result.jobId, (status: { progress: { completed: number; total: number; percentage: number } }) => {
                 console.log(
                     `📊 Progress: ${status.progress.completed}/${status.progress.total} (${status.progress.percentage}%)`
                 );
@@ -201,4 +201,5 @@ export function EnrichmentMenu({
         </div>
     );
 }
+
 

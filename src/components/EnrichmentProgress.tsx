@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { BackendAdapter } from '../adapters';
+import { BackendAdapter } from '../core/adapters/BackendAdapter';
 import { X, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 
 interface EnrichmentProgressProps {
