@@ -344,6 +344,18 @@ This repository includes a comprehensive demo application showcasing the grid's 
 
 ### How to Run
 
+You can run the demo directly from the root directory:
+
+```bash
+# One-time setup: install demo dependencies
+npm run demo:install
+
+# Run the demo
+npm run demo
+```
+
+Alternatively, you can navigate to the folder manually:
+
 1.  Navigate to the demo directory:
     ```bash
     cd examples/demo-app
