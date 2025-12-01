@@ -20,7 +20,7 @@ graph TD
     User[User Action] -->|DOM Event| Input[InputController]
     Input -->|Raw Event| Handler[Mouse/Keyboard Handler]
     Handler -->|GridInputEvent| Normalizer[EventNormalizer]
-    Normalizer -->|NormalizedEvent (Col, Row)| Logic[GridEngine Logic]
+    Normalizer -->|NormalizedEvent: Col/Row| Logic[GridEngine Logic]
     Logic -->|State Update| Store[Grid State/Model]
     Store -->|Event Emit| Engine[GridEngine Loop]
     Engine -->|Render Call| Renderer[Canvas/HTML Renderer]
