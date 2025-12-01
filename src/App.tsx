@@ -1,20 +1,4 @@
-import { GridContainer } from './react/components/GridContainer';
-import { createGridEngine } from './core';
-
-// Simple empty state for library development
-const engine = createGridEngine({
-    dataSource: {
-        mode: 'local',
-        initialData: { columns: [], rows: [] }
-    },
-    ui: {
-        theme: {
-            headerHeight: 40,
-            rowHeight: 40,
-            rowHeaderWidth: 50
-        }
-    }
-});
+import { WorkbookShell } from './react/components/WorkbookShell';
 
 function App() {
     return (
@@ -26,8 +10,8 @@ function App() {
                     or check <code className="bg-gray-100 px-1 rounded">examples/demo-app</code>.
                 </p>
             </header>
-            <main className="flex-1 relative">
-                <GridContainer engine={engine} />
+            <main className="flex-1 relative overflow-hidden">
+                <WorkbookShell />
             </main>
         </div>
     );

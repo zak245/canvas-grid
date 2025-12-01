@@ -8,6 +8,7 @@ A high-performance, opinionated grid engine for building spreadsheet-like interf
 ## Features
 
 - **🚀 High Performance**: Canvas-based rendering with virtualization for 100K+ rows at 60fps
+- **📚 Workbooks & Sheets**: Multi-sheet support with a centralized manager, just like a spreadsheet
 - **🔌 Adapter System**: Connect to any data source (Local, REST API, WebSocket)
 - **⚡️ Optimistic Updates**: Built-in support for instant UI updates with background sync
 - **📦 Batteries Included**: Built-in cell types, editors, and validation
@@ -23,9 +24,47 @@ npm install @grid-engine/core
 
 ## Quick Start
 
-### 1. Local Data (In-Memory)
+### 1. Workbooks (Multi-Sheet)
 
-The simplest way to get started is using the `LocalAdapter` with in-memory data.
+The `WorkbookManager` is the recommended way to use the library, as it handles multiple sheets and coordinates state.
+
+```typescript
+import { WorkbookShell, useWorkbook } from '@grid-engine/react';
+import { WorkbookManager } from '@grid-engine/core';
+
+// Initialize a manager with one or more sheets
+const manager = new WorkbookManager([
+  { 
+    id: 'sheet-1', 
+    name: 'Sales Data', 
+    config: {
+      dataSource: {
+        mode: 'local',
+        initialData: {
+            columns: [
+                { id: 'id', title: 'ID', width: 60, type: 'text' },
+                { id: 'name', title: 'Product', width: 150, type: 'text' }
+            ],
+            rows: []
+        }
+      }
+    } 
+  }
+]);
+
+function App() {
+  // The WorkbookShell handles the canvas, tabs, and sheet switching
+  return (
+    <div style={{ height: '100vh' }}>
+      <WorkbookShell manager={manager} />
+    </div>
+  );
+}
+```
+
+### 2. Single Grid (Standalone)
+
+For simple use cases requiring only a single grid without tabs:
 
 ```typescript
 import { createGridEngine } from '@grid-engine/core';
@@ -55,7 +94,7 @@ const engine = createGridEngine({
 engine.mount(document.getElementById('grid-canvas'));
 ```
 
-### 2. Connecting to a Backend
+### 3. Connecting to a Backend
 
 To persist data, use the `BackendAdapter` or create your own `DataAdapter` implementation.
 

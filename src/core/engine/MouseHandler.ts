@@ -26,6 +26,11 @@ export class MouseHandler {
     constructor(private engine: GridEngine) { }
 
     handleMouseDown = (e: MouseEvent) => {
+        // Ensure canvas has focus for keyboard events
+        if (e.target instanceof HTMLCanvasElement) {
+            e.target.focus();
+        }
+
         const { theme } = this.engine;
         const { scrollTop } = this.engine.viewport.getState();
         

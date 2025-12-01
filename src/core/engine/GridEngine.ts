@@ -489,11 +489,28 @@ export class GridEngine {
     resize(width: number, height: number) {
         this.viewport.updateState({ width, height });
         this.store.setState({ activeHeaderMenu: null, activeAddColumnMenu: null });
+        // Force render on resize
+        this.render();
     }
 
     scroll(scrollTop: number, scrollLeft: number) {
-        this.viewport.updateState({ scrollTop, scrollLeft });
+        const { rowHeight, headerHeight } = this.theme;
+        const { height, width } = this.viewport.getState();
+        
+        // Ensure we don't scroll past content bounds
+        const rowCount = this.rows.getRowCount();
+        const totalHeight = (rowCount + 1) * rowHeight; // +1 for potential empty space/add row
+        const contentHeight = Math.max(0, totalHeight - (height - headerHeight));
+        
+        const maxScrollLeft = Math.max(0, this.model.getColumns().reduce((sum, c) => sum + c.width, 0) - width + this.theme.rowHeaderWidth);
+
+        const clampedTop = Math.max(0, Math.min(scrollTop, contentHeight));
+        const clampedLeft = Math.max(0, Math.min(scrollLeft, maxScrollLeft + 500)); // Allow some overscroll for whitespace
+
+        this.viewport.updateState({ scrollTop: clampedTop, scrollLeft: clampedLeft });
         this.store.setState({ activeHeaderMenu: null, activeAddColumnMenu: null });
+        // Force render on scroll
+        this.render();
     }
 
     // ===== PUBLIC API METHODS =====

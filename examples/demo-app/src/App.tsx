@@ -1,171 +1,132 @@
-import { GridContainer } from '@grid-engine/react';
-import { createGridEngine } from '@grid-engine/core';
-import type { GridColumn, GridRow } from '@grid-engine/core';
+import { useState, useMemo } from 'react';
+import { GridRow, GridColumn } from '@grid-engine/core';
+import { WorkbookShell, useWorkbook } from '@grid-engine/react';
+import { WorkbookManager } from '@grid-engine/core';
 import { ContextMenu } from './ContextMenu';
 
-// 1. Comprehensive Columns Definition
+// 1. Define Columns
 const columns: GridColumn[] = [
-    // Basic Types
-    { id: 'col-text', title: 'Name', width: 180, type: 'text', visible: true },
-    { id: 'col-number', title: 'Age', width: 100, type: 'number', visible: true, typeOptions: { min: 0, max: 120 } },
-    { id: 'col-currency', title: 'Salary', width: 140, type: 'currency', visible: true, typeOptions: { currency: 'USD' } },
-    { id: 'col-date', title: 'Join Date', width: 150, type: 'date', visible: true, typeOptions: { format: 'date' } },
-    
-    // Selection & Boolean
-    { id: 'col-boolean', title: 'Active', width: 100, type: 'boolean', visible: true },
     { 
-        id: 'col-select', 
-        title: 'Department', 
-        width: 160, 
-        type: 'select', 
+        id: 'id', 
+        title: 'ID', 
+        width: 80, 
+        type: 'text', 
         visible: true, 
-        typeOptions: { 
-            options: [
-                { value: 'eng', label: 'Engineering', color: '#dbeafe' },
-                { value: 'mkt', label: 'Marketing', color: '#fce7f3' },
-                { value: 'sales', label: 'Sales', color: '#dcfce7' },
-                { value: 'hr', label: 'HR', color: '#f3f4f6' }
-            ] 
-        } 
+        pinned: true 
     },
-    
-    // Contact Info
-    { id: 'col-email', title: 'Email', width: 220, type: 'email', visible: true },
-    { id: 'col-phone', title: 'Phone', width: 160, type: 'phone', visible: true },
-    { id: 'col-url', title: 'Website', width: 200, type: 'url', visible: true },
-    
-    // Visual & Interactive
-    { id: 'col-progress', title: 'Performance', width: 150, type: 'progress', visible: true },
-    { id: 'col-rating', title: 'Rating', width: 140, type: 'rating', visible: true, typeOptions: { max: 5, icon: 'star' } },
     { 
-        id: 'col-tags', 
-        title: 'Skills', 
-        width: 200, 
-        type: 'tags', 
+        id: 'name', 
+        title: 'Product Name', 
+        width: 220, 
+        type: 'text', 
+        visible: true 
+    },
+    { 
+        id: 'category', 
+        title: 'Category', 
+        width: 140, 
+        type: 'select', 
         visible: true,
         typeOptions: {
-            options: [
-                { label: 'React', color: '#61dafb' },
-                { label: 'TypeScript', color: '#3178c6' },
-                { label: 'Node.js', color: '#339933' },
-                { label: 'Python', color: '#3776ab' },
-                { label: 'Design', color: '#ea4c89' }
-            ]
+            options: ['Electronics', 'Furniture', 'Clothing', 'Books', 'Software']
+        } 
+    },
+    { 
+        id: 'status', 
+        title: 'Status', 
+        width: 120, 
+        type: 'select', 
+        visible: true,
+        typeOptions: {
+            options: ['In Stock', 'Low Stock', 'Out of Stock', 'Discontinued'],
+            colors: {
+                'In Stock': '#dcfce7', // Green 100
+                'Low Stock': '#fef9c3', // Yellow 100
+                'Out of Stock': '#fee2e2', // Red 100
+                'Discontinued': '#f3f4f6' // Gray 100
+            }
         }
     },
-    
-    // Advanced
-    { id: 'col-json', title: 'Metadata', width: 200, type: 'json', visible: true },
-    { id: 'col-action', title: 'Actions', width: 100, type: 'action', visible: true, typeOptions: { buttons: [{ id: 'edit', icon: 'edit' }, { id: 'delete', icon: 'trash' }] } }
-];
-
-// 2. Rich Sample Data
-const rows: GridRow[] = [
-    {
-        id: 'row-1',
-        cells: new Map([
-            ['col-text', { value: 'Alice Johnson' }],
-            ['col-number', { value: 28 }],
-            ['col-currency', { value: 95000 }],
-            ['col-date', { value: '2023-01-15' }],
-            ['col-boolean', { value: true }],
-            ['col-select', { value: 'eng' }],
-            ['col-email', { value: 'alice@tech.co' }],
-            ['col-phone', { value: '555-0101' }],
-            ['col-url', { value: 'https://alice.dev' }],
-            ['col-progress', { value: 0.85 }],
-            ['col-rating', { value: 5 }],
-            ['col-tags', { value: ['React', 'TypeScript'] }],
-            ['col-json', { value: JSON.stringify({ role: 'Senior Dev', remote: true }) }],
-        ])
+    { 
+        id: 'price', 
+        title: 'Price', 
+        width: 100, 
+        type: 'currency', 
+        visible: true,
+        format: {
+            prefix: '$',
+            decimals: 2
+        }
+    },
+    { 
+        id: 'rating', 
+        title: 'Rating', 
+        width: 120, 
+        type: 'rating', 
+        visible: true 
+    },
+    { 
+        id: 'tags', 
+        title: 'Tags', 
+        width: 200, 
+        type: 'tags', 
+        visible: true 
     },
     {
-        id: 'row-2',
-        cells: new Map([
-            ['col-text', { value: 'Bob Smith' }],
-            ['col-number', { value: 34 }],
-            ['col-currency', { value: 82000 }],
-            ['col-date', { value: '2022-11-01' }],
-            ['col-boolean', { value: true }],
-            ['col-select', { value: 'sales' }],
-            ['col-email', { value: 'bob.smith@sales.net' }],
-            ['col-phone', { value: '555-0102' }],
-            ['col-url', { value: 'https://sales.net/bob' }],
-            ['col-progress', { value: 0.62 }],
-            ['col-rating', { value: 3.5 }],
-            ['col-tags', { value: ['Negotiation', 'CRM'] }],
-            ['col-json', { value: JSON.stringify({ territory: 'West Coast' }) }],
-        ])
+        id: 'lastUpdated',
+        title: 'Last Updated',
+        width: 150,
+        type: 'date',
+        visible: true
     },
     {
-        id: 'row-3',
-        cells: new Map([
-            ['col-text', { value: 'Charlie Brown' }],
-            ['col-number', { value: 45 }],
-            ['col-currency', { value: 120000 }],
-            ['col-date', { value: '2021-06-20' }],
-            ['col-boolean', { value: false }],
-            ['col-select', { value: 'mkt' }],
-            ['col-email', { value: 'charlie@creative.io' }],
-            ['col-phone', { value: '555-0103' }],
-            ['col-url', { value: 'https://creative.io' }],
-            ['col-progress', { value: 0.45 }],
-            ['col-rating', { value: 4 }],
-            ['col-tags', { value: ['Design', 'Marketing'] }],
-            ['col-json', { value: JSON.stringify({ campaigns: 12 }) }],
-        ])
-    },
-    {
-        id: 'row-4',
-        cells: new Map([
-            ['col-text', { value: 'Diana Prince' }],
-            ['col-number', { value: 31 }],
-            ['col-currency', { value: 105000 }],
-            ['col-date', { value: '2023-03-10' }],
-            ['col-boolean', { value: true }],
-            ['col-select', { value: 'hr' }],
-            ['col-email', { value: 'diana@hr.org' }],
-            ['col-phone', { value: '555-0104' }],
-            ['col-url', { value: 'https://hr.org/team' }],
-            ['col-progress', { value: 0.92 }],
-            ['col-rating', { value: 4.5 }],
-            ['col-tags', { value: ['Recruiting', 'Culture'] }],
-            ['col-json', { value: JSON.stringify({ certifications: ['PHR', 'SHRM'] }) }],
-        ])
-    },
-    {
-        id: 'row-5',
-        cells: new Map([
-            ['col-text', { value: 'Evan Wright' }],
-            ['col-number', { value: 24 }],
-            ['col-currency', { value: 72000 }],
-            ['col-date', { value: '2024-01-05' }],
-            ['col-boolean', { value: true }],
-            ['col-select', { value: 'eng' }],
-            ['col-email', { value: 'evan@tech.co' }],
-            ['col-phone', { value: '555-0105' }],
-            ['col-url', { value: 'https://github.com/evan' }],
-            ['col-progress', { value: 0.30 }],
-            ['col-rating', { value: 2 }],
-            ['col-tags', { value: ['Python', 'React'] }],
-            ['col-json', { value: JSON.stringify({ intern: true, mentor: 'Alice' }) }],
-        ])
+        id: 'image',
+        title: 'Image',
+        width: 100,
+        type: 'image',
+        visible: true
     }
 ];
 
-// 3. Create Engine
-const simpleEngine = createGridEngine({
-    dataSource: {
-        mode: 'local',
-        initialData: { columns, rows }
-    },
+// 2. Define Data Generation Helper
+const generateData = (count: number): GridRow[] => {
+    const rows: GridRow[] = [];
+    const categories = ['Electronics', 'Furniture', 'Clothing', 'Books', 'Software'];
+    const statuses = ['In Stock', 'Low Stock', 'Out of Stock', 'Discontinued'];
+    
+    for(let i = 0; i < count; i++) {
+        const category = categories[Math.floor(Math.random() * categories.length)];
+        const status = statuses[Math.floor(Math.random() * statuses.length)];
+        const price = (Math.random() * 1000).toFixed(2);
+        const rating = Math.floor(Math.random() * 5) + 1;
+
+        const cells = new Map();
+        cells.set('id', { value: `PRD-${1000 + i}` });
+        cells.set('name', { value: `${category} Item ${i + 1}` });
+        cells.set('category', { value: category });
+        cells.set('status', { value: status });
+        cells.set('price', { value: parseFloat(price) });
+        cells.set('rating', { value: rating });
+        cells.set('tags', { value: ['New', 'Sale'] });
+        cells.set('lastUpdated', { value: new Date().toISOString().split('T')[0] });
+
+        rows.push({
+            id: `row-${i}`,
+            cells
+        });
+    }
+    return rows;
+};
+
+// 3. Define Config Template
+const baseConfig = {
     ui: {
         theme: {
             headerHeight: 40,
             rowHeight: 40,
             rowHeaderWidth: 60
         }
-    } as any,
+    },
     features: {
         rows: {
             actions: [
@@ -174,21 +135,74 @@ const simpleEngine = createGridEngine({
             ]
         }
     }
-});
+};
 
-// 4. App Component
-function App() {
+// 4. Custom Workbook Shell for Demo (Wraps the Core Shell)
+// We need to wrap it to provide the context menu capability, as the ContextMenu
+// needs the active engine instance.
+const DemoWorkbookShell = () => {
+    // Initialize Manager with multiple sheets
+    const manager = useMemo(() => {
+        return new WorkbookManager([
+            { 
+                id: 'sheet-1', 
+                name: 'Q1 Sales', 
+                config: {
+                    ...baseConfig,
+                    dataSource: {
+                        mode: 'local',
+                        initialData: { columns, rows: generateData(50) }
+                    }
+                } 
+            },
+            { 
+                id: 'sheet-2', 
+                name: 'Q2 Projections', 
+                config: {
+                    ...baseConfig,
+                    dataSource: {
+                        mode: 'local',
+                        initialData: { columns, rows: generateData(20) }
+                    }
+                } 
+            }
+        ]);
+    }, []);
+
+    // Use the hook to access active engine for ContextMenu
+    // Note: useWorkbook gives us activeSheetId. We can get the engine from manager.
+    const { activeSheetId } = useWorkbook(manager);
+    
+    // We need a way to force re-render when active engine changes so ContextMenu updates
+    // The hook handles state updates for activeSheetId, which triggers this.
+    const activeEngine = manager.getActiveEngine();
+
+    return (
+        <div className="flex flex-col h-full relative">
+            {/* Render the core shell which handles canvas and tabs */}
+            <div className="flex-1 relative overflow-hidden">
+                 {/* Pass manager directly to core shell */}
+                 <WorkbookShell manager={manager} />
+                 
+                 {/* Overlay Context Menu */}
+                 {activeEngine && <ContextMenu engine={activeEngine} />}
+            </div>
+        </div>
+    );
+};
+
+export default function App() {
     return (
         <div className="w-screen h-screen bg-white flex flex-col">
             <header className="h-16 border-b border-gray-200 px-6 flex items-center justify-between bg-gray-50 shrink-0">
                 <h1 className="font-bold text-gray-800">Grid Engine Demo</h1>
+                <div className="text-sm text-gray-500">
+                    Workbook Mode
+                </div>
             </header>
             <main className="flex-1 relative overflow-hidden">
-                <GridContainer engine={simpleEngine} />
-                <ContextMenu engine={simpleEngine} />
+                <DemoWorkbookShell />
             </main>
         </div>
     );
 }
-
-export default App;

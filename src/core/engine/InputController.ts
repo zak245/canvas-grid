@@ -21,7 +21,8 @@ export class InputController {
         canvas.addEventListener('mousemove', this.mouseHandler.handleMouseMove);
         canvas.addEventListener('mouseup', this.mouseHandler.handleMouseUp);
         canvas.addEventListener('dblclick', this.mouseHandler.handleDoubleClick);
-        canvas.addEventListener('contextmenu', this.mouseHandler.onContextMenu); // Added
+        canvas.addEventListener('contextmenu', this.mouseHandler.onContextMenu);
+        canvas.addEventListener('wheel', this.handleWheel, { passive: false }); // Added
 
         // Keyboard events (Canvas focus)
         canvas.addEventListener('keydown', this.keyboardHandler.handleKeyDown);
@@ -42,13 +43,28 @@ export class InputController {
         canvas.removeEventListener('mousemove', this.mouseHandler.handleMouseMove);
         canvas.removeEventListener('mouseup', this.mouseHandler.handleMouseUp);
         canvas.removeEventListener('dblclick', this.mouseHandler.handleDoubleClick);
-        canvas.removeEventListener('contextmenu', this.mouseHandler.onContextMenu); // Added
+        canvas.removeEventListener('contextmenu', this.mouseHandler.onContextMenu);
+        canvas.removeEventListener('wheel', this.handleWheel); // Added
         canvas.removeEventListener('keydown', this.keyboardHandler.handleKeyDown);
 
         document.removeEventListener('copy', this.handleCopy);
         document.removeEventListener('cut', this.handleCut);
         document.removeEventListener('paste', this.handlePaste);
     }
+
+    private handleWheel = (e: WheelEvent) => {
+        e.preventDefault();
+        
+        const { scrollTop, scrollLeft } = this.engine.viewport.getState();
+        const { deltaX, deltaY } = e;
+
+        // Simple scrolling with debug
+        const newTop = Math.max(0, scrollTop + deltaY);
+        const newLeft = Math.max(0, scrollLeft + deltaX);
+
+        this.engine.scroll(newTop, newLeft);
+    };
+
 
     private handleCopy = (e: ClipboardEvent) => {
         if (this.isInputEvent(e)) return;

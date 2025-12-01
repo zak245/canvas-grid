@@ -19,6 +19,7 @@ export type {
 export { SelectionManager } from './engine/SelectionManager';
 export { ColumnManager } from './engine/ColumnManager';
 export { EditingManager } from './engine/EditingManager';
+export { WorkbookManager } from './workbook/WorkbookManager';
 
 // Model
 export { GridModel } from './engine/GridModel';
@@ -44,6 +45,12 @@ export type {
 export type {
   ColumnSort,
 } from './types/platform';
+
+// Workbook Types
+export type {
+  Sheet,
+  WorkbookState
+} from './types/workbook';
 
 // Adapters
 export type { DataAdapter } from './adapters/DataAdapter';
@@ -77,4 +84,3 @@ import type { GridConfig } from './config/GridConfig';
 export function createGridEngine(config: Partial<GridConfig>): GridEngine {
   return new GridEngine(config);
 }
-
