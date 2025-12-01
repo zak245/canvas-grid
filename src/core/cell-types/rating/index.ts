@@ -1,9 +1,10 @@
 import { ratingCellDefinition } from './definition';
-import { ratingCellRenderer } from './canvas';
+import { ratingCellRenderer as ratingCanvasRenderer } from './canvas';
+import { ratingCellRenderer } from './renderers';
 import type { CellType } from '../types';
 
 export const ratingCellType: CellType<number> = {
   ...ratingCellDefinition,
+  ...ratingCanvasRenderer,
   ...ratingCellRenderer,
 };
-

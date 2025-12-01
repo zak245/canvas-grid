@@ -43,7 +43,7 @@ export default defineConfig([
     dts: true,
     sourcemap: true,
     outDir: 'dist',
-    external: ['zustand'],
+    external: ['zustand', 'react', 'react-dom', 'lucide-react'],
   },
 ]);
 

@@ -6,7 +6,7 @@
  */
 
 import type { GridTheme } from '../types/grid';
-import type { ActionEvent } from '../types/platform';
+// import type { ActionEvent } from '../types/platform';
 
 // ============================================================================
 // Core Cell Type Interface

@@ -1,9 +1,10 @@
 import { textCellDefinition } from './definition';
-import { textCellRenderer } from './canvas';
+import { textCellRenderer as textCanvasRenderer } from './canvas';
+import { textCellRenderer as textHtmlRenderer } from './renderers';
 import type { CellType } from '../types';
 
 export const textCellType: CellType<string> = {
   ...textCellDefinition,
-  ...textCellRenderer,
+  ...textCanvasRenderer,
+  ...textHtmlRenderer,
 };
-

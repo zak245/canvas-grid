@@ -1,6 +1,6 @@
 import { GridEngine } from './GridEngine';
 import { GridInputEvent } from '../renderer/types';
-import { CellRenderContext, CellTypeName } from '../cell-types/types';
+import { CellRenderContext, CellTypeName, InteractiveCell } from '../cell-types/types';
 import { cellTypeRegistry } from '../cell-types/registry';
 
 export interface NormalizedEvent {
@@ -185,7 +185,7 @@ export class EventNormalizer {
                 this.engine.eventBus.emit('hover:leave', { ...prevHover });
                 const prevCol = this.engine.model.getVisibleColumns()[prevHover.col];
                 if (prevCol) {
-                    const cellType = cellTypeRegistry.get(prevCol.type as CellTypeName);
+                    // const _cellType = cellTypeRegistry.get(prevCol.type as CellTypeName);
                     // We don't have context here easily to call onHover leave, usually just rerender
                 }
             }
@@ -196,7 +196,7 @@ export class EventNormalizer {
                 
                 const col = this.engine.model.getVisibleColumns()[newHover.col];
                 if (col) {
-                    const cellType = cellTypeRegistry.get(col.type as CellTypeName);
+                    // const _cellType = cellTypeRegistry.get(col.type as CellTypeName);
                     // Retrieve context and call onHover if needed
                     // For now, we primarily update state in engine to trigger render
                 }
@@ -223,14 +223,16 @@ export class EventNormalizer {
         if (event.type !== 'mousedown' && event.type !== 'click') return null;
 
         const definition = cellTypeRegistry.getDefinition(type);
-        const interactive = definition as any; // Check for interactive interface
+        const interactive = definition as unknown as InteractiveCell<any>; // Check for interactive interface
         
         if (interactive.onHitTest) {
             const row = this.engine.rows.getRow(rowIndex);
             if (!row) return null;
             
-            const cell = row.cells.get(columnId);
-            const column = this.engine.model.getColumn(columnId);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const cells: any = row.cells;
+            const cell = cells.get(columnId);
+            const column = this.engine.model.getColumnById(columnId);
             
             if (cell && column) {
                 // Construct Context

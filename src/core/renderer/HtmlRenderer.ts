@@ -410,7 +410,7 @@ export class HtmlRenderer extends BaseRenderer {
             const el = document.createElement('div');
             el.className = 'ds-grid-header-cell';
             el.style.position = 'absolute';
-            const screenX = theme.rowHeaderWidth + frozenWidth + (currentScrollableX - scrollLeft);
+            const screenX = theme.rowHeaderWidth + (currentScrollableX - scrollLeft);
             
             if (screenX + col.width > theme.rowHeaderWidth && screenX < this.engine.viewport.getState().width) {
                 el.style.left = `${screenX}px`;
@@ -543,7 +543,7 @@ export class HtmlRenderer extends BaseRenderer {
                     pinnedX += col.width;
                     cellEl.style.zIndex = '10';
                 } else {
-                    left = theme.rowHeaderWidth + frozenWidth + (currentScrollableX - scrollLeft);
+                    left = theme.rowHeaderWidth + (currentScrollableX - scrollLeft);
                     currentScrollableX += col.width;
                 }
 

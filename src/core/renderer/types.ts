@@ -60,7 +60,7 @@ export abstract class BaseRenderer implements GridRenderer {
     abstract render(): void;
     abstract getElement(): HTMLElement | null;
     
-    setPixelRatio(ratio: number): void {
+    setPixelRatio(_ratio: number): void {
         // Default no-op
     }
 

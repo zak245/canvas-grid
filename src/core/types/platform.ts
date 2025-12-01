@@ -82,6 +82,12 @@ export interface ActionEvent {
   originalEvent?: MouseEvent | React.MouseEvent | KeyboardEvent | React.KeyboardEvent;
 }
 
+export interface RowAction {
+  id: string;
+  label: string;
+  icon: string;
+}
+
 // ==================== VALIDATION ====================
 
 export interface ValidationResult {

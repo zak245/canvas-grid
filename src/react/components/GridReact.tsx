@@ -288,7 +288,7 @@ export const GridReact: React.FC<GridReactProps> = ({ engine }) => {
                     const idx = scrollableSet.indexOf(col);
                     for(let k=0; k<idx; k++) currentLogicalX += scrollableSet[k].width;
 
-                    const left = theme.rowHeaderWidth + frozenWidth + (currentLogicalX - scrollLeft);
+                    const left = theme.rowHeaderWidth + (currentLogicalX - scrollLeft);
                     const sort = sortState.find(s => s.columnId === col.id);
 
                     return (
@@ -385,7 +385,7 @@ export const GridReact: React.FC<GridReactProps> = ({ engine }) => {
                                     const idx = scrollableSet.indexOf(col);
                                     let currentLogicalX = scrollableGridX;
                                     for(let k=0; k<idx; k++) currentLogicalX += scrollableSet[k].width;
-                                    left = theme.rowHeaderWidth + frozenWidth + (currentLogicalX - scrollLeft);
+                                    left = theme.rowHeaderWidth + (currentLogicalX - scrollLeft);
                                 }
 
                                 const cell = row.cells.get(col.id);
