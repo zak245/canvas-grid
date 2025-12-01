@@ -118,6 +118,9 @@ The `GridEngine` class is just a container. The actual logic lives in specialize
 
 The engine features a groundbreaking **Triple Rendering Engine** that lets you switch strategies based on your specific use case, without changing your data model or business logic.
 
+![Triple Engine View](docs/images/triple-engine-view.png)
+_The Triple Engine architecture allows hot-swapping renderers without losing state._
+
 ### 1. Canvas Engine (The Speed Demon)
 *   **Best for**: Extreme Performance, Large Datasets (100k+ rows).
 *   **Tech**: Pure HTML5 Canvas, 60FPS scrolling, GPU acceleration.
@@ -158,6 +161,8 @@ npm install @grid-engine/core
 ### 1. Workbooks (Multi-Sheet)
 
 The `WorkbookManager` is the recommended way to use the library, as it handles multiple sheets and coordinates state.
+
+![Workbook View](docs/images/workbook-view.png)
 
 ```typescript
 import { WorkbookShell, useWorkbook } from '@grid-engine/react';
@@ -332,6 +337,34 @@ The engine is decoupled from data storage via the `DataAdapter` interface.
 ### Optimistic Updates
 
 The engine handles user interactions immediately ("Optimistic UI") and synchronizes with the adapter in the background. If the adapter throws an error, the engine automatically rolls back the change.
+
+## Running the Live Demo 🎮
+
+This repository includes a comprehensive demo application showcasing the grid's capabilities.
+
+### How to Run
+
+1.  Navigate to the demo directory:
+    ```bash
+    cd examples/demo-app
+    ```
+2.  Install dependencies:
+    ```bash
+    npm install
+    ```
+3.  Start the development server:
+    ```bash
+    npm run dev
+    ```
+
+### What's Inside
+
+The demo application (`examples/demo-app`) illustrates two key integration patterns:
+
+1.  **Workbook Mode**: Shows how to use `WorkbookManager` to manage multiple sheets with a shared state.
+2.  **Triple Engine Mode**: Demonstrates the ability to hot-swap between Canvas, HTML, and React renderers while maintaining the same data model.
+
+You can explore `examples/demo-app/src/App.tsx` and `examples/demo-app/src/TripleDemo.tsx` to see how the engine is initialized and configured.
 
 ## License
 
