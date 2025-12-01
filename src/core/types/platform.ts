@@ -72,6 +72,16 @@ export type FilterOperator =
 
 export type ComparatorFn = (a: any, b: any) => number;
 
+// ==================== ACTIONS ====================
+
+export interface ActionEvent {
+  action: string;
+  rowIndex: number;
+  columnId: string;
+  payload?: any;
+  originalEvent?: MouseEvent | React.MouseEvent | KeyboardEvent | React.KeyboardEvent;
+}
+
 // ==================== VALIDATION ====================
 
 export interface ValidationResult {
@@ -231,4 +241,3 @@ export function isColumnSort(obj: any): obj is ColumnSort {
     (obj.direction === 'asc' || obj.direction === 'desc')
   );
 }
-

@@ -70,6 +70,14 @@ export class SelectionManager {
    * Select a single cell
    */
   selectCell(row: number, col: number): void {
+    // Validate bounds
+    const maxRow = this.deps.getRowCount() - 1;
+    const maxCol = this.deps.getColumnCount() - 1;
+    
+    if (row < 0 || row > maxRow || col < 0 || col > maxCol) {
+        return; // Ignore invalid selection
+    }
+
     this.setSelection({
       primary: { row, col },
       ranges: [{ start: { row, col }, end: { row, col } }]
@@ -88,16 +96,22 @@ export class SelectionManager {
 
     const { row: anchorRow, col: anchorCol } = current.primary;
 
+    // Validate bounds
+    const maxRow = this.deps.getRowCount() - 1;
+    const maxCol = this.deps.getColumnCount() - 1;
+    const safeTargetRow = Math.max(0, Math.min(targetRow, maxRow));
+    const safeTargetCol = Math.max(0, Math.min(targetCol, maxCol));
+
     this.setSelection({
-      primary: { row: targetRow, col: targetCol },
+      primary: { row: anchorRow, col: anchorCol },
       ranges: [{
         start: {
-          row: Math.min(anchorRow, targetRow),
-          col: Math.min(anchorCol, targetCol)
+          row: Math.min(anchorRow, safeTargetRow),
+          col: Math.min(anchorCol, safeTargetCol)
         },
         end: {
-          row: Math.max(anchorRow, targetRow),
-          col: Math.max(anchorCol, targetCol)
+          row: Math.max(anchorRow, safeTargetRow),
+          col: Math.max(anchorCol, safeTargetCol)
         }
       }]
     });

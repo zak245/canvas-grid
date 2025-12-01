@@ -40,6 +40,8 @@ export class KeyboardHandler {
             if (e.key === 'Enter') {
                 // Commit
                 this.engine.stopEdit();
+                // Move selection down (Excel behavior)
+                this.engine.moveSelection(1, 0);
                 e.preventDefault();
                 e.stopPropagation();
             } else if (e.key === 'Escape') {

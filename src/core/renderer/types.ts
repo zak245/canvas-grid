@@ -6,6 +6,7 @@
  */
 
 import type { GridTheme } from '../types/grid';
+import type { GridEngine } from '../engine/GridEngine';
 
 // ============================================================================
 // Grid Renderer Interface
@@ -41,6 +42,36 @@ export interface GridRenderer {
    * Force a full repaint (e.g., after theme change)
    */
   invalidate?(): void;
+}
+
+/**
+ * Base class for renderers to share common logic
+ */
+export abstract class BaseRenderer implements GridRenderer {
+    protected engine: GridEngine;
+    protected container: HTMLElement | null = null;
+
+    constructor(engine: GridEngine) {
+        this.engine = engine;
+    }
+
+    abstract attach(container: HTMLElement): void;
+    abstract detach(): void;
+    abstract render(): void;
+    abstract getElement(): HTMLElement | null;
+    
+    setPixelRatio(ratio: number): void {
+        // Default no-op
+    }
+
+    invalidate(): void {
+        this.render();
+    }
+
+    // Helper to get theme
+    protected get theme(): GridTheme {
+        return this.engine.theme;
+    }
 }
 
 // ============================================================================

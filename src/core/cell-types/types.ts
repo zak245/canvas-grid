@@ -6,6 +6,7 @@
  */
 
 import type { GridTheme } from '../types/grid';
+import type { ActionEvent } from '../types/platform';
 
 // ============================================================================
 // Core Cell Type Interface
@@ -91,14 +92,36 @@ export interface HtmlCellRenderer<T = unknown> {
   /**
    * Render the cell value as a React node or HTML string
    */
-  render(context: CellRenderContext<T>): React.ReactNode | string;
+  renderHtml?(context: CellRenderContext<T>): HTMLElement | string;
+  renderReact?(context: CellRenderContext<T>): any; // Typed as any to avoid hard React dependency in core
+}
+
+/**
+ * Interactive Cell Capabilities
+ */
+export interface InteractiveCell<T = unknown> {
+  /**
+   * Hit test for Canvas-based interactivity
+   * Returns an action to trigger if a specific part of the cell was clicked
+   */
+  onHitTest?(context: CellRenderContext<T>, x: number, y: number): { action: string; payload?: any } | null;
+
+  /**
+   * Hover handler
+   */
+  onHover?(context: CellRenderContext<T>, x: number, y: number): void;
+
+  /**
+   * Get available hover actions for this cell
+   */
+  getHoverActions?(context: CellRenderContext<T>): { icon: string; label: string; action: string }[];
 }
 
 /**
  * Legacy CellType interface for backward compatibility during migration.
  * Combines definition and canvas renderer.
  */
-export interface CellType<T = unknown> extends CellDefinition<T>, CanvasCellRenderer<T> {}
+export interface CellType<T = unknown> extends CellDefinition<T>, CanvasCellRenderer<T>, HtmlCellRenderer<T>, InteractiveCell<T> {}
 
 // ============================================================================
 // Cell Type Names (Built-in types only)

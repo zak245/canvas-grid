@@ -91,6 +91,10 @@ export class EditingManager {
     const rows = this.deps.model.getAllRows();
     const cellValue = rows[row]?.cells.get(column.id)?.value;
 
+    // Check if editable (cell type check or readonly prop)
+    // TODO: Check column.editable or cellType.editable?
+    // Assuming for now all cells are editable if enabled in config.
+
     // Always set editing state - the CellEditorOverlay handles the mode
     this.deps.store.setState({ editingCell: { row, col } });
     this.deps.lifecycle.onCellEditStart?.(row, column.id, cellValue);

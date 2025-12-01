@@ -5,7 +5,7 @@ export interface EditorProps {
     value: any;
     width: number;
     height: number;
-    onCommit: (value: any) => void;
+    onCommit: (value: any, moveNext?: boolean) => void;
     onCancel: () => void;
     className?: string;
 }
@@ -30,8 +30,10 @@ export const TextEditor: React.FC<EditorProps> = ({
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
-            onCommit(currentValue);
+            e.stopPropagation();
+            onCommit(currentValue, true); // Commit and move next
         } else if (e.key === 'Escape') {
+            e.stopPropagation();
             onCancel();
         }
     };

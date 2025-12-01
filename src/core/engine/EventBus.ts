@@ -145,6 +145,34 @@ export interface GridEventPayloads {
     message: string;
     details?: unknown;
   };
+
+  // Interaction Events
+  'cell:action': {
+    action: string;
+    payload?: any;
+  };
+
+  'hover:enter': {
+    row: number;
+    col: number;
+  };
+
+  'hover:leave': {
+    row: number;
+    col: number;
+  };
+
+  // Renderer Events
+  'renderer:attached': {
+    container: HTMLElement;
+    type: string;
+  };
+
+  'renderer:detached': {
+    type: string;
+  };
+
+  'render': void;
 }
 
 // ============================================================================

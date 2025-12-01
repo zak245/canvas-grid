@@ -5,7 +5,37 @@ A high-performance, opinionated grid engine for building spreadsheet-like interf
 [![npm version](https://badge.fury.io/js/@grid-engine%2Fcore.svg)](https://www.npmjs.com/package/@grid-engine/core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+## Documentation 📚
+
+- **[Technical Architecture](docs/TECHNICAL_ARCHITECTURE.md)** - Overview of the system design and modules.
+- **[Interaction Flow](docs/INTERACTION_FLOW.md)** - High-level guide to how user interactions are processed.
+- **[Interaction Deep Dive](docs/INTERACTION_DEEP_DIVE.md)** - Detailed code-level analysis of the interaction subsystem (Layers 0-6).
+
+## Triple Engine Architecture 🚀
+
+**Make it count.** Why choose between performance and flexibility when you can have both?
+
+The engine features a groundbreaking **Triple Rendering Engine** that lets you switch strategies based on your specific use case, without changing your data model or business logic.
+
+### 1. Canvas Engine (The Speed Demon)
+*   **Best for**: Extreme Performance, Large Datasets (100k+ rows).
+*   **Tech**: Pure HTML5 Canvas, 60FPS scrolling, GPU acceleration.
+*   **Why**: When you need raw speed and data density. It's the default for a reason.
+
+### 2. HTML Engine (The DOM Master)
+*   **Best for**: Accessibility (A11y), Native Text Selection, CSS styling.
+*   **Tech**: Virtualized DOM elements.
+*   **Why**: When you need screen readers to "read" the grid or want to use standard CSS for complex layouts while keeping decent performance (up to 5k rows).
+
+### 3. React Engine (The Component King)
+*   **Best for**: Complex Interactivity, Custom React Components.
+*   **Tech**: Headless state management with React rendering.
+*   **Why**: Embed your existing Dropdowns, DatePickers, and interactive Cards directly into cells. Complete component flexibility.
+
+---
+
 ## Features
+
 
 - **🚀 High Performance**: Canvas-based rendering with virtualization for 100K+ rows at 60fps
 - **📚 Workbooks & Sheets**: Multi-sheet support with a centralized manager, just like a spreadsheet

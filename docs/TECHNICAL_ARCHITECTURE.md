@@ -6,10 +6,10 @@ This document provides a comprehensive technical overview of the `@grid-engine/c
 
 ## 1. Core Architecture Overview
 
-The library follows a **Modified MVC (Model-View-Controller)** pattern designed for high-performance canvas rendering, now extended with a **Workbook Manager** layer for multi-sheet support.
+The library follows a **Modified MVC (Model-View-Controller)** pattern designed for high-performance rendering, capable of switching between **Canvas**, **HTML**, and **React** rendering strategies (the "Triple Engine").
 
 - **Model (`GridModel`, `WorkbookManager`)**: Single source of truth for grid data and workbook state. Optimized for O(1) lookups and efficient updates.
-- **View (`CanvasRenderer`, `WorkbookShell`)**: A purely functional rendering layer that draws the state of the Model and the Engine onto an HTML5 Canvas, wrapped in a React shell for tabs and overlays.
+- **View (`GridRenderer`)**: An abstraction layer that draws the state. Implementations include `CanvasRenderer` (speed), `HtmlRenderer` (native DOM), and `ReactRenderer` (components).
 - **Controller (`GridEngine`, `WorkbookManager`)**: The central brains. `WorkbookManager` orchestrates sheets; `GridEngine` orchestrates user inputs and logic for a specific sheet.
 
 ### Data Flow
@@ -38,7 +38,7 @@ The components are decoupled via a strictly typed `EventBus`.
 
 ---
 
-## 2. Workbook Architecture (New)
+## 2. Workbook Architecture
 
 The Workbook layer sits above the Grid Engine to manage multiple sheets, similar to Excel or Google Sheets.
 
@@ -82,6 +82,13 @@ The `GridEngine` class is the entry point for a single sheet. It initializes the
     - Initializes the `GridModel`, `Viewport`, and `DataAdapter`.
     - Manages the main `requestAnimationFrame` render loop.
     - Exposes the public API (e.g., `engine.updateCell()`, `engine.sort()`).
+
+### EventNormalizer
+- **Role**: Input standardizer.
+- **Logic**: 
+    - Intercepts raw DOM events (`mousedown`, `mousemove`, `keydown`).
+    - Converts pixel coordinates or DOM targets into logical Grid Coordinates (`row`, `col`).
+    - Ensures `InputController` receives a unified event format regardless of whether the active renderer is Canvas, HTML, or React.
 
 ### SelectionManager
 - **Role**: Handles what is selected.
@@ -258,17 +265,16 @@ Interactions are not handled by React. They are handled by a raw event processin
 
 ### The Pipeline
 
-1.  **DOM Listener**: `InputController` receives a native DOM event (e.g., `mousedown`).
-2.  **Dispatcher**: Events are routed to `MouseHandler` or `KeyboardHandler`.
-3.  **Hit Test**: The handler uses the **Hit Testing Formulas** (above) to find the target `Cell` or `Header`.
-4.  **Action Determination**:
+1.  **DOM Listener**: `InputController` (via `EventNormalizer`) receives a native DOM event.
+2.  **Normalization**: `EventNormalizer` translates pixels/targets into Logical Grid Coordinates (`row`, `col`).
+3.  **Dispatcher**: Events are routed to `MouseHandler` or `KeyboardHandler`.
+4.  **Hit Test**: The handler uses positioning formulas to confirm targets.
+5.  **Action Determination**:
     - *Left Click on Cell*: `SelectionManager.setPrimary(cell)`
     - *Right Click on Cell*: Open Context Menu
-    - *Click on Separator*: Start `ColumnResize` mode
     - *Drag on Header*: Start `ColumnReorder` mode
-5.  **State Mutation**: The engine updates the `Zustand` store (transient state) or `GridModel` (persistent state).
-6.  **Render Request**: The engine flags the canvas as "dirty".
-7.  **Paint**: `requestAnimationFrame` calls `CanvasRenderer.render()`.
+6.  **State Mutation**: The engine updates the `Zustand` store or `GridModel`.
+7.  **Render Request**: The engine calls `renderer.render()`, triggering a repaint (Canvas), DOM update (HTML), or State Signal (React).
 
 ### Example: Drag-Selecting Cells
 
@@ -365,28 +371,183 @@ The `CanvasRenderer` is responsible for drawing the grid. It operates in "Immedi
 
 ---
 
-## 8. Cell Type System
 
-The rendering of individual cells is pluggable. The `CellTypeRegistry` maps type names (e.g., 'text', 'date') to implementation objects.
+## 8. Triple Engine Rendering Pipeline (Deep Dive)
+
+The library introduces a revolutionary "Triple Engine" architecture, allowing the grid to be rendered using three distinct strategies without changing the underlying logic or state management. This ensures that you can always "make it count" — choosing the exact right tool for the job.
+
+### The Abstraction: `GridRenderer`
+All renderers implement the `GridRenderer` interface. The `GridEngine` is agnostic to the implementation, interacting only via standardized methods:
+
+```typescript
+interface GridRenderer {
+    attach(container: HTMLElement): void; // Mount to DOM
+    render(): void;                       // Draw/Update current state
+    getElement(): HTMLElement | null;     // Return root for event binding
+    detach(): void;                       // Cleanup
+}
+```
+
+### 1. Canvas Renderer (`CanvasRenderer`)
+*   **Philosophy**: "Pixels are cheap."
+*   **Mechanism**: Draws the entire visible viewport on a single `<canvas>` element every frame using "Immediate Mode" rendering.
+*   **Performance**: Constant time O(1) regarding DOM complexity. Handles 100k+ rows at 60fps.
+*   **Code Insight**:
+
+```typescript
+// src/core/renderer/CanvasRenderer.ts
+render(): void {
+    const ctx = this.ctx;
+    const { width, height, scrollTop } = this.engine.viewport.getState();
+
+    // 1. Clear Screen
+    ctx.clearRect(0, 0, width, height);
+
+    // 2. Calculate Visible Range (Virtualization)
+    // We only loop through the rows that are actually on screen
+    const visibleRange = this.engine.viewport.calculateVisibleRange(...);
+
+    // 3. Draw Cells
+    visibleRange.visibleRows.forEach(row => {
+        visibleRange.visibleColumns.forEach(col => {
+            // Mathematical calculation of position
+            const x = calculateX(col, ...);
+            const y = calculateY(row, ...);
+            
+            // Draw text/shapes directly to canvas
+            ctx.fillText(cell.value, x, y);
+            ctx.strokeRect(x, y, col.width, rowHeight);
+        });
+    });
+}
+```
+
+### 2. HTML Renderer (`HtmlRenderer`)
+*   **Philosophy**: "The DOM is accessible."
+*   **Mechanism**: Uses **DOM Virtualization**. It creates a pool of `<div>` elements for visible cells and recycles/repositions them as the user scrolls.
+*   **Pros**: Native browser behavior (Ctrl+F, Screen Readers), simple CSS styling.
+*   **Code Insight**:
+
+```typescript
+// src/core/renderer/HtmlRenderer.ts
+renderBody(visibleRows, visibleColumns, ...) {
+    const fragment = document.createDocumentFragment();
+    
+    // Create or update DOM nodes for visible cells only
+    visibleRows.forEach(row => {
+        visibleColumns.forEach(col => {
+            const cellEl = document.createElement('div');
+            
+            // Absolute positioning based on grid coordinates
+            cellEl.style.position = 'absolute';
+            cellEl.style.transform = `translate(${x}px, ${y}px)`;
+            cellEl.textContent = cell.value;
+            
+            fragment.appendChild(cellEl);
+        });
+    });
+
+    // Batch update DOM
+    this.bodyContainer.replaceChildren(fragment);
+}
+```
+
+### 3. React Renderer (`ReactRenderer`)
+*   **Philosophy**: "Components are powerful."
+*   **Mechanism**: The Engine acts as a "Headless" store. It calculates layout and state, then emits signals. React components subscribe to these signals and render standard React nodes.
+*   **Integration**: The renderer doesn't render itself; it notifies the React `GridContainer` to update.
+*   **Code Insight**:
+
+```typescript
+// src/core/renderer/ReactRenderer.ts
+render(): void {
+    // React is reactive, not imperative.
+    // We emit a signal telling the external React component tree to re-render.
+    this.engine.eventBus.emit('render');
+}
+
+// In your React Component:
+const GridReact = ({ engine }) => {
+    const forceUpdate = useForceUpdate();
+    
+    useEffect(() => {
+        // Subscribe to the engine's render signal
+        return engine.on('render', forceUpdate);
+    }, [engine]);
+
+    return (
+        <div>
+            {visibleRows.map(row => (
+                <CellComponent key={row.id} row={row} />
+            ))}
+        </div>
+    );
+}
+```
+
+### Input Normalization: `EventNormalizer`
+To support three different rendering targets, we cannot rely on simple DOM events.
+- **The Problem**: A click on a Canvas is an `(x, y)` pixel coordinate. A click in HTML is a `target` element.
+- **The Solution**: The `EventNormalizer` intercepts all interactions and standardizes them before they reach logic handlers.
+
+```typescript
+// src/core/engine/EventNormalizer.ts
+public normalizeEvent(event: GridInputEvent): NormalizedEvent {
+    const { x, y, originalEvent } = event;
+    
+    // 1. Detect Region (Header vs Body)
+    if (y < headerHeight) return { target: 'header', ... };
+
+    // 2. Calculate Grid Coordinates from Pixels
+    // This works for BOTH Canvas (pixels) and HTML (offset positions)
+    const gridY = y - headerHeight + scrollTop;
+    const rowIndex = Math.floor(gridY / rowHeight);
+    
+    const gridX = x - rowHeaderWidth + scrollLeft;
+    const colIndex = calculateColIndex(gridX);
+
+    return {
+        type: 'click',
+        row: rowIndex,
+        col: colIndex,
+        originalEvent
+    };
+}
+```
+
+This means your business logic (e.g., "Select row 5 when clicked") works identically whether you are clicking a pixel on a canvas or a `<div>` in the DOM.
+
+---
+
+## 9. Cell Type System
+
+The rendering of individual cells is pluggable. The `CellTypeRegistry` maps type names (e.g., 'text', 'date') to implementation objects. Each cell type can define a `CanvasRenderer`, an `HtmlRenderer`, or both.
 
 ### CellType Interface
 
 ```typescript
 interface CellType<T> {
   name: string;
-  draw(ctx, value, x, y, width, height, theme): void;
-  format(value): string;
-  validate(value): { valid: boolean, error?: string };
-  // ...
+  
+  // Canvas Implementation
+  render?(ctx: CanvasRenderingContext2D, context: CellRenderContext<T>): void;
+  
+  // HTML/React Implementation
+  renderHtml?(context: CellRenderContext<T>): HTMLElement | string;
+  
+  format(value: T): string;
+  validate(value: unknown): { valid: boolean, error?: string };
 }
 ```
 
 ### Customization
-Developers can register custom cell types. For example, a `UserAvatarCell` that draws an image and text. The renderer simply looks up the type and calls `.draw()`, passing the canvas context. This keeps the core engine lightweight while allowing infinite visual flexibility.
+Developers can register custom cell types. The engine asks the registry for the appropriate renderer based on the active engine mode.
+- In **Canvas Mode**: `cellType.render(ctx)` is called.
+- In **HTML Mode**: `cellType.renderHtml()` is called, and the result is appended to the cell div.
 
 ---
 
-## 9. State Management
+## 10. State Management
 
 The library splits state management into two categories to ensure performance:
 

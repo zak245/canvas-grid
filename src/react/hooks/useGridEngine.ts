@@ -6,39 +6,35 @@ import { GridEngine } from '../../core/engine/GridEngine';
  * Handles mounting/unmounting and resize events.
  * 
  * @param engine - The GridEngine instance to manage
- * @returns A ref to attach to the canvas element
+ * @returns A ref to attach to the container element
  */
 export function useGridEngine(engine: GridEngine) {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
+        const container = containerRef.current;
+        if (!container) return;
 
-        engine.mount(canvas);
+        engine.mount(container);
 
         const handleResize = () => {
-            const parent = canvas.parentElement;
-            if (parent) {
-                const { clientWidth, clientHeight } = parent;
-                const dpr = window.devicePixelRatio || 1;
-                canvas.width = clientWidth * dpr;
-                canvas.height = clientHeight * dpr;
-                canvas.style.width = `${clientWidth}px`;
-                canvas.style.height = `${clientHeight}px`;
-
+            if (container) {
+                const { clientWidth, clientHeight } = container;
+                // Canvas resizing is now handled by the renderer or engine if needed
+                // We just notify engine of logical size change
                 engine.resize(clientWidth, clientHeight);
             }
         };
 
-        window.addEventListener('resize', handleResize);
+        const resizeObserver = new ResizeObserver(handleResize);
+        resizeObserver.observe(container);
         handleResize();
 
         return () => {
-            window.removeEventListener('resize', handleResize);
+            resizeObserver.disconnect();
             engine.unmount();
         };
     }, [engine]);
 
-    return canvasRef;
+    return containerRef;
 }

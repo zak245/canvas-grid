@@ -24,12 +24,16 @@ import type {
   BackendEndpoints,
   CellEditor,
   GridData,
+  RowAction,
   // FetchParams - removed unused import
 } from '../types/platform';
 
 // ==================== MAIN CONFIG ====================
 
 export interface GridConfig {
+  // Rendering Engine
+  renderer: 'canvas' | 'html' | 'react';
+
   // Data source configuration
   dataSource: DataSourceConfig;
   
@@ -286,6 +290,7 @@ export interface UIConfig {
 // ==================== DEFAULT CONFIGS ====================
 
 export const DEFAULT_CONFIG: GridConfig = {
+  renderer: 'canvas',
   dataSource: {
     mode: 'local',
   },
@@ -367,6 +372,7 @@ export const DEFAULT_CONFIG: GridConfig = {
  */
 export function mergeConfig(userConfig: Partial<GridConfig>): GridConfig {
   return {
+    renderer: userConfig.renderer || DEFAULT_CONFIG.renderer,
     dataSource: {
       ...DEFAULT_CONFIG.dataSource,
       ...userConfig.dataSource,
@@ -438,4 +444,3 @@ export function validateConfig(config: GridConfig): string[] {
   
   return errors;
 }
-

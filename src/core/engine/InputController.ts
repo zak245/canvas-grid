@@ -9,23 +9,25 @@ import { MouseHandler } from './MouseHandler';
 export class InputController {
     public keyboardHandler: KeyboardHandler;
     public mouseHandler: MouseHandler;
+    private engine: GridEngine;
 
     constructor(engine: GridEngine) {
+        this.engine = engine;
         this.keyboardHandler = new KeyboardHandler(engine);
         this.mouseHandler = new MouseHandler(engine);
     }
 
-    mount(canvas: HTMLCanvasElement) {
+    mount(element: HTMLElement) {
         // Mouse events
-        canvas.addEventListener('mousedown', this.mouseHandler.handleMouseDown);
-        canvas.addEventListener('mousemove', this.mouseHandler.handleMouseMove);
-        canvas.addEventListener('mouseup', this.mouseHandler.handleMouseUp);
-        canvas.addEventListener('dblclick', this.mouseHandler.handleDoubleClick);
-        canvas.addEventListener('contextmenu', this.mouseHandler.onContextMenu);
-        canvas.addEventListener('wheel', this.handleWheel, { passive: false }); // Added
+        element.addEventListener('mousedown', this.mouseHandler.handleMouseDown);
+        element.addEventListener('mousemove', this.mouseHandler.handleMouseMove);
+        element.addEventListener('mouseup', this.mouseHandler.handleMouseUp);
+        // element.addEventListener('dblclick', this.mouseHandler.handleDoubleClick); // Handled manually in MouseHandler
+        element.addEventListener('contextmenu', this.mouseHandler.onContextMenu);
+        element.addEventListener('wheel', this.handleWheel, { passive: false });
 
-        // Keyboard events (Canvas focus)
-        canvas.addEventListener('keydown', this.keyboardHandler.handleKeyDown);
+        // Keyboard events
+        element.addEventListener('keydown', this.keyboardHandler.handleKeyDown);
 
         // Clipboard events (Global)
         // We listen globally because clicking headers removes focus from canvas
@@ -33,19 +35,21 @@ export class InputController {
         document.addEventListener('cut', this.handleCut);
         document.addEventListener('paste', this.handlePaste);
 
-        // Make canvas focusable
-        canvas.tabIndex = 0;
-        canvas.focus();
+        // Make element focusable if it isn't already
+        if (element.tabIndex === -1) {
+            element.tabIndex = 0;
+        }
+        element.focus();
     }
 
-    unmount(canvas: HTMLCanvasElement) {
-        canvas.removeEventListener('mousedown', this.mouseHandler.handleMouseDown);
-        canvas.removeEventListener('mousemove', this.mouseHandler.handleMouseMove);
-        canvas.removeEventListener('mouseup', this.mouseHandler.handleMouseUp);
-        canvas.removeEventListener('dblclick', this.mouseHandler.handleDoubleClick);
-        canvas.removeEventListener('contextmenu', this.mouseHandler.onContextMenu);
-        canvas.removeEventListener('wheel', this.handleWheel); // Added
-        canvas.removeEventListener('keydown', this.keyboardHandler.handleKeyDown);
+    unmount(element: HTMLElement) {
+        element.removeEventListener('mousedown', this.mouseHandler.handleMouseDown);
+        element.removeEventListener('mousemove', this.mouseHandler.handleMouseMove);
+        element.removeEventListener('mouseup', this.mouseHandler.handleMouseUp);
+        // element.removeEventListener('dblclick', this.mouseHandler.handleDoubleClick);
+        element.removeEventListener('contextmenu', this.mouseHandler.onContextMenu);
+        element.removeEventListener('wheel', this.handleWheel);
+        element.removeEventListener('keydown', this.keyboardHandler.handleKeyDown);
 
         document.removeEventListener('copy', this.handleCopy);
         document.removeEventListener('cut', this.handleCut);

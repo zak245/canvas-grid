@@ -3,6 +3,7 @@ import { GridRow, GridColumn } from '@grid-engine/core';
 import { WorkbookShell, useWorkbook } from '@grid-engine/react';
 import { WorkbookManager } from '@grid-engine/core';
 import { ContextMenu } from './ContextMenu';
+import { TripleDemo } from './TripleDemo';
 
 // 1. Define Columns
 const columns: GridColumn[] = [
@@ -138,10 +139,7 @@ const baseConfig = {
 };
 
 // 4. Custom Workbook Shell for Demo (Wraps the Core Shell)
-// We need to wrap it to provide the context menu capability, as the ContextMenu
-// needs the active engine instance.
 const DemoWorkbookShell = () => {
-    // Initialize Manager with multiple sheets
     const manager = useMemo(() => {
         return new WorkbookManager([
             { 
@@ -169,22 +167,13 @@ const DemoWorkbookShell = () => {
         ]);
     }, []);
 
-    // Use the hook to access active engine for ContextMenu
-    // Note: useWorkbook gives us activeSheetId. We can get the engine from manager.
     const { activeSheetId } = useWorkbook(manager);
-    
-    // We need a way to force re-render when active engine changes so ContextMenu updates
-    // The hook handles state updates for activeSheetId, which triggers this.
     const activeEngine = manager.getActiveEngine();
 
     return (
         <div className="flex flex-col h-full relative">
-            {/* Render the core shell which handles canvas and tabs */}
             <div className="flex-1 relative overflow-hidden">
-                 {/* Pass manager directly to core shell */}
                  <WorkbookShell manager={manager} />
-                 
-                 {/* Overlay Context Menu */}
                  {activeEngine && <ContextMenu engine={activeEngine} />}
             </div>
         </div>
@@ -192,16 +181,29 @@ const DemoWorkbookShell = () => {
 };
 
 export default function App() {
+    const [mode, setMode] = useState<'workbook' | 'triple'>('workbook');
+
     return (
         <div className="w-screen h-screen bg-white flex flex-col">
-            <header className="h-16 border-b border-gray-200 px-6 flex items-center justify-between bg-gray-50 shrink-0">
+            <header className="h-16 border-b border-gray-200 px-6 flex items-center justify-between bg-gray-50 shrink-0 z-30">
                 <h1 className="font-bold text-gray-800">Grid Engine Demo</h1>
-                <div className="text-sm text-gray-500">
-                    Workbook Mode
+                <div className="flex bg-gray-200 rounded-lg p-1 gap-1">
+                    <button 
+                        className={`px-3 py-1 text-sm rounded-md transition-colors ${mode === 'workbook' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                        onClick={() => setMode('workbook')}
+                    >
+                        Workbook
+                    </button>
+                    <button 
+                        className={`px-3 py-1 text-sm rounded-md transition-colors ${mode === 'triple' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
+                        onClick={() => setMode('triple')}
+                    >
+                        Triple Engine
+                    </button>
                 </div>
             </header>
             <main className="flex-1 relative overflow-hidden">
-                <DemoWorkbookShell />
+                {mode === 'workbook' ? <DemoWorkbookShell /> : <TripleDemo />}
             </main>
         </div>
     );

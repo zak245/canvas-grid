@@ -1,5 +1,6 @@
 import { GridEngine } from './GridEngine';
 import { CellPosition } from '../types/grid';
+import { GridInputEvent } from '../renderer/types';
 
 export class MouseHandler {
     private isDragging = false;
@@ -23,12 +24,66 @@ export class MouseHandler {
     private isReorderingRow = false;
     private rowReorderCandidate: { rowIndex: number, startY: number, dragOffset: number } | null = null;
 
+    // Double Click Detection
+    private lastClickTime = 0;
+    private lastClickPos: { x: number, y: number } | null = null;
+
     constructor(private engine: GridEngine) { }
 
+    private createInputEvent(e: MouseEvent): GridInputEvent {
+        // Use currentTarget (listener attachment point) to get reliable coordinates
+        // This fixes issues where e.target is a child element (HTML/React renderers)
+        // causing offsetX/Y to be relative to the child instead of the container.
+        const target = e.currentTarget as HTMLElement;
+        const rect = target.getBoundingClientRect();
+
+        return {
+            type: e.type as any,
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+            button: e.button,
+            modifiers: {
+                shift: e.shiftKey,
+                ctrl: e.ctrlKey,
+                alt: e.altKey,
+                meta: e.metaKey
+            },
+            originalEvent: e
+        };
+    }
+
     handleMouseDown = (e: MouseEvent) => {
-        // Ensure canvas has focus for keyboard events
-        if (e.target instanceof HTMLCanvasElement) {
+        // Ensure canvas/container has focus
+        // The Normalizer also has syncFocus, but explicit focus here ensures immediate response
+        if (e.target instanceof HTMLElement) {
             e.target.focus();
+        }
+
+        // Normalize Event
+        const inputEvent = this.createInputEvent(e);
+        const event = this.engine.eventNormalizer.normalizeEvent(inputEvent);
+        if (!event) return;
+
+        // Manual Double Click Detection (Robust against DOM replacement)
+        const now = Date.now();
+        if (this.lastClickPos && 
+            Math.abs(event.x - this.lastClickPos.x) < 10 &&
+            Math.abs(event.y - this.lastClickPos.y) < 10 &&
+            (now - this.lastClickTime) < 400) {
+            
+            this.handleDoubleClick(e);
+            // Reset
+            this.lastClickTime = 0;
+            this.lastClickPos = null;
+            return;
+        }
+        this.lastClickTime = now;
+        this.lastClickPos = { x: event.x, y: event.y };
+
+        // NEW: Handle Action Cell Click
+        if (event.action) {
+            this.engine.eventBus.emit('cell:action', event.action);
+            return;
         }
 
         const { theme } = this.engine;
@@ -40,97 +95,85 @@ export class MouseHandler {
         }
 
         // 0. Check Row Header Interaction
-        if (e.offsetX < theme.rowHeaderWidth) {
-            // Check "Select All" Checkbox (Top-Left)
-            if (e.offsetY < theme.headerHeight) {
-                const cbSize = 14;
-                const cbX = 8;
-                const cbY = (theme.headerHeight - cbSize) / 2;
-                if (e.offsetX >= cbX - 4 && e.offsetX <= cbX + cbSize + 4 &&
-                    e.offsetY >= cbY - 4 && e.offsetY <= cbY + cbSize + 4) {
-                    this.engine.toggleSelectAllRows();
-                    return;
-                }
-            }
+        if (event.target === 'corner') {
+            // Toggle Select All on any click in the corner region
+            this.engine.toggleSelectAllRows();
+            return;
+        }
+        
+        if (event.target === 'row-header') {
+            const rowIndex = event.row;
+            const rowCount = this.engine.rows.getRowCount();
             
-            if (e.offsetY > theme.headerHeight) {
-                const rowIndex = Math.floor((e.offsetY - theme.headerHeight + scrollTop) / theme.rowHeight);
-                // Use RowManager count
-                const rowCount = this.engine.rows.getRowCount();
-                
-                if (rowIndex >= 0 && rowIndex < rowCount) {
-                    // NEW: Check for Group Header
-                    const row = this.engine.rows.getRow(rowIndex);
-                    if (row?.isGroupHeader && row.groupKey) {
-                         // Simple toggle on click anywhere in the header for now
-                         // We could refine this to just the arrow icon later
-                         this.engine.rows.toggleGroup(row.groupKey);
-                         this.engine.render();
-                         return;
-                    }
-
-                     // Check Configured Actions
-                     const configActions = this.engine.getConfig()?.features.rows.actions;
-                     let actionHandled = false;
-                     
-                     if (configActions && configActions.length > 0) {
-                         let actionX = theme.rowHeaderWidth - 20;
-                         for (const action of configActions) {
-                             if (e.offsetX >= actionX - 8 && e.offsetX <= actionX + 8) {
-                                 this.engine.triggerRowAction(rowIndex, action.id);
-                                 actionHandled = true;
-                                 break;
-                             }
-                             actionX -= 24;
-                         }
-                     } else {
-                         // Default Actions logic (Enrich/Detail)
-                         const enrichX = theme.rowHeaderWidth - 34;
-                         const detailX = theme.rowHeaderWidth - 16;
-                         
-                         if (e.offsetX >= enrichX - 8 && e.offsetX <= enrichX + 8) {
-                             this.engine.triggerRowAction(rowIndex, 'enrich');
-                             actionHandled = true;
-                         } else if (e.offsetX >= detailX - 8 && e.offsetX <= detailX + 8) {
-                             this.engine.triggerRowAction(rowIndex, 'detail');
-                             actionHandled = true;
-                         }
-                     }
-
-                     if (actionHandled) return;
-
-                     // Check Row Checkbox (Simulate Multi-Select)
-                     if (e.offsetX <= 30) {
-                         this.engine.toggleRowSelection(rowIndex, true); // Force multi
-                         return;
-                     }
-
-                     // Start Row Reorder or Selection
-                     // If clicking on the number or blank space, initiate drag candidate
-                     this.rowReorderCandidate = {
-                         rowIndex,
-                         startY: e.clientY,
-                         dragOffset: (e.offsetY - theme.headerHeight + scrollTop) % theme.rowHeight
-                     };
-
-                     // Start Row Selection Drag (Standard)
-                     this.isSelectingRows = true;
-                     this.rowSelectionStart = rowIndex;
-                     
-                     const isCtrl = e.metaKey || e.ctrlKey;
-                     if (isCtrl) {
-                         this.engine.toggleRowSelection(rowIndex, true);
-                     } else {
-                         this.engine.selectRow(rowIndex, e.shiftKey);
-                     }
+            if (rowIndex >= 0 && rowIndex < rowCount) {
+                // NEW: Check for Group Header
+                const row = this.engine.rows.getRow(rowIndex);
+                if (row?.isGroupHeader && row.groupKey) {
+                     this.engine.rows.toggleGroup(row.groupKey);
+                     this.engine.render();
+                     return;
                 }
-                return;
+
+                 // Check Configured Actions
+                 const configActions = this.engine.getConfig()?.features.rows.actions;
+                 let actionHandled = false;
+                 
+                 if (configActions && configActions.length > 0) {
+                     let actionX = theme.rowHeaderWidth - 20;
+                     for (const action of configActions) {
+                         if (event.x >= actionX - 8 && event.x <= actionX + 8) {
+                             this.engine.triggerRowAction(rowIndex, action.id);
+                             actionHandled = true;
+                             break;
+                         }
+                         actionX -= 24;
+                     }
+                 } else {
+                     // Default Actions logic (Enrich/Detail)
+                     const enrichX = theme.rowHeaderWidth - 34;
+                     const detailX = theme.rowHeaderWidth - 16;
+                     
+                     if (event.x >= enrichX - 8 && event.x <= enrichX + 8) {
+                         this.engine.triggerRowAction(rowIndex, 'enrich');
+                         actionHandled = true;
+                     } else if (event.x >= detailX - 8 && event.x <= detailX + 8) {
+                         this.engine.triggerRowAction(rowIndex, 'detail');
+                         actionHandled = true;
+                     }
+                 }
+
+                 if (actionHandled) return;
+
+                 // Check Row Checkbox (Simulate Multi-Select)
+                 if (event.x <= 30) {
+                     this.engine.toggleRowSelection(rowIndex, true); // Force multi
+                     return;
+                 }
+
+                 // Start Row Reorder or Selection
+                 this.rowReorderCandidate = {
+                     rowIndex,
+                     startY: e.clientY,
+                     dragOffset: (event.y - theme.headerHeight + scrollTop) % theme.rowHeight
+                 };
+
+                 // Start Row Selection Drag (Standard)
+                 this.isSelectingRows = true;
+                 this.rowSelectionStart = rowIndex;
+                 
+                 const isCtrl = e.metaKey || e.ctrlKey;
+                 if (isCtrl) {
+                     this.engine.toggleRowSelection(rowIndex, true);
+                 } else {
+                     this.engine.selectRow(rowIndex, e.shiftKey);
+                 }
             }
+            return;
         }
 
         // 1. Check for Header Interaction
-        if (e.offsetY < theme.headerHeight) {
-            this.handleHeaderMouseDown(e);
+        if (event.target === 'header') {
+            this.handleHeaderMouseDown(e, event.x);
             return;
         }
 
@@ -141,7 +184,7 @@ export class MouseHandler {
         }
 
         // NEW: Check for Group Header Click in Body
-        const bodyY = e.offsetY - theme.headerHeight + scrollTop;
+        const bodyY = event.y - theme.headerHeight + scrollTop;
         const bodyRowIndex = Math.floor(bodyY / theme.rowHeight);
         const bodyRowCount = this.engine.rows.getRowCount();
         if (bodyRowIndex >= 0 && bodyRowIndex < bodyRowCount) {
@@ -155,17 +198,16 @@ export class MouseHandler {
         }
 
         // 2. Check for "Add Row" button click
-        const gridY = (e.offsetY - theme.headerHeight) + scrollTop;
-        // Use visual row count
         const totalRows = this.engine.rows.getRowCount();
         const addRowY = totalRows * theme.rowHeight;
+        const gridY = (event.y - theme.headerHeight) + scrollTop;
         
         if (gridY >= addRowY && gridY < addRowY + theme.rowHeight) {
             // Input Box & Button are drawn at visual X = theme.rowHeaderWidth + 12
             const startX = theme.rowHeaderWidth + 12;
             
             // 1. Check Input Box (width 40)
-            if (e.offsetX >= startX && e.offsetX <= startX + 40) {
+            if (event.x >= startX && event.x <= startX + 40) {
                 e.preventDefault();
                 
                 // Create inline input element
@@ -173,7 +215,7 @@ export class MouseHandler {
                 input.type = 'number';
                 input.value = String(this.engine.store.getState().rowsToAdd);
                 input.style.position = 'absolute';
-                input.style.left = `${e.clientX - e.offsetX + startX}px`; // Canvas absolute + relative X
+                input.style.left = `${e.clientX - event.x + startX}px`; 
                 
                 const rect = (e.target as HTMLElement).getBoundingClientRect();
                 
@@ -220,7 +262,7 @@ export class MouseHandler {
             }
 
             // 2. Check Add Button (starts at startX + 50, approx width 100)
-            if (e.offsetX >= startX + 50 && e.offsetX <= startX + 150) {
+            if (event.x >= startX + 50 && event.x <= startX + 150) {
                 e.preventDefault(); // Prevent double firing
                 e.stopPropagation();
                 const count = this.engine.store.getState().rowsToAdd;
@@ -231,66 +273,72 @@ export class MouseHandler {
             return;
         }
 
-        const cell = this.engine.getCellPositionAt(e.offsetX, e.offsetY);
-        if (!cell) return;
+        // Check for Cell Click
+        if (event.target === 'cell' && event.col >= 0 && event.row >= 0) {
+            const cell = { col: event.col, row: event.row };
+            const { selection } = this.engine.store.getState();
 
-        const { selection } = this.engine.store.getState();
+            // 3. Check if clicking on fill handle
+            if (selection && this.isClickOnFillHandle(event.x, event.y, selection)) {
+                this.startFillDrag(selection);
+                return;
+            }
 
-        // 3. Check if clicking on fill handle
-        if (selection && this.isClickOnFillHandle(e.offsetX, e.offsetY, selection)) {
-            this.startFillDrag(selection);
-            return;
-        }
+            // 4. Start cell selection
+            this.isDragging = true;
+            this.dragStart = cell;
 
-        // 4. Start cell selection
-        this.isDragging = true;
-        this.dragStart = cell;
-
-        if (e.shiftKey && selection) {
-            // Extend selection
-            const primary = selection.primary!;
-            this.engine.store.setState({
-                selection: {
-                    primary,
-                    ranges: [
-                        {
-                            start: { row: Math.min(primary.row, cell.row), col: Math.min(primary.col, cell.col) },
-                            end: { row: Math.max(primary.row, cell.row), col: Math.max(primary.col, cell.col) }
-                        }
-                    ]
-                }
-            });
-        } else if (e.metaKey || e.ctrlKey) {
-            // Multi-range selection
-            const ranges = selection ? [...selection.ranges] : [];
-            ranges.push({ start: cell, end: cell });
-            this.engine.store.setState({
-                selection: {
-                    primary: cell,
-                    ranges
-                }
-            });
-        } else {
-            // Single cell selection
-            this.engine.store.setState({
-                selection: {
-                    primary: cell,
-                    ranges: [{ start: cell, end: cell }]
-                }
-            });
+            if (e.shiftKey && selection) {
+                // Extend selection
+                const primary = selection.primary!;
+                this.engine.store.setState({
+                    selection: {
+                        primary,
+                        ranges: [
+                            {
+                                start: { row: Math.min(primary.row, cell.row), col: Math.min(primary.col, cell.col) },
+                                end: { row: Math.max(primary.row, cell.row), col: Math.max(primary.col, cell.col) }
+                            }
+                        ]
+                    }
+                });
+            } else if (e.metaKey || e.ctrlKey) {
+                // Multi-range selection
+                const ranges = selection ? [...selection.ranges] : [];
+                ranges.push({ start: cell, end: cell });
+                this.engine.store.setState({
+                    selection: {
+                        primary: cell,
+                        ranges
+                    }
+                });
+            } else {
+                // Single cell selection
+                this.engine.store.setState({
+                    selection: {
+                        primary: cell,
+                        ranges: [{ start: cell, end: cell }]
+                    }
+                });
+            }
         }
     };
 
     handleMouseMove = (e: MouseEvent) => {
+        const inputEvent = this.createInputEvent(e);
+        const event = this.engine.eventNormalizer.normalizeEvent(inputEvent);
+        if (!event) return;
+
         const { theme } = this.engine;
         const { isFilling, selection } = this.engine.store.getState();
         const { scrollTop } = this.engine.viewport.getState();
-        const canvas = e.target as HTMLCanvasElement;
+        const canvas = e.target as HTMLElement;
 
         // Update hover position for tooltips and hovered cell
-        const hoveredCell = this.engine.getCellPositionAt(e.offsetX, e.offsetY);
+        const hoveredCell = (event.target === 'cell' && event.col >= 0) ? { col: event.col, row: event.row } : null;
+        
         this.engine.store.setState({
-            hoverPosition: { x: e.offsetX, y: e.offsetY },
+            hoverPosition: { x: event.x, y: event.y },
             hoveredCell: hoveredCell
         });
 
@@ -305,19 +353,13 @@ export class MouseHandler {
         }
 
         if (this.isReorderingRow && this.rowReorderCandidate) {
-            // TODO: Add visual feedback for row reordering (ghost row / line)
-            // For now, just cursor
             canvas.style.cursor = 'grabbing';
-            
-            // We could update a state variable here for the renderer to draw a line
-            // const targetRow = Math.floor((e.offsetY - theme.headerHeight + scrollTop) / theme.rowHeight);
-            // this.engine.store.setState({ reorderRowTarget: targetRow }); // Assuming we add this to state
             return;
         }
 
         // 0b. Handle Row Selection Drag (only if not reordering)
         if (this.isSelectingRows && this.rowSelectionStart !== -1 && !this.isReorderingRow) {
-             const gridY = e.offsetY - theme.headerHeight + scrollTop;
+             const gridY = event.y - theme.headerHeight + scrollTop;
              const rowIndex = Math.floor(gridY / theme.rowHeight);
              const rowCount = this.engine.rows.getRowCount();
              const targetRow = Math.max(0, Math.min(rowCount - 1, rowIndex));
@@ -372,24 +414,24 @@ export class MouseHandler {
         }
 
         if (this.isReordering && this.reorderCandidate) {
-            this.updateReorderState(e.clientX);
+            this.updateReorderState(e.clientX, event.x);
             canvas.style.cursor = 'grabbing';
             return;
         }
 
         // 3. Handle Cursor Styling
-        if (e.offsetX < theme.rowHeaderWidth && e.offsetY > theme.headerHeight) {
+        if (event.target === 'row-header') {
              const enrichX = theme.rowHeaderWidth - 34;
              const detailX = theme.rowHeaderWidth - 16;
              
-             if ((e.offsetX >= enrichX - 8 && e.offsetX <= enrichX + 8) || 
-                 (e.offsetX >= detailX - 8 && e.offsetX <= detailX + 8)) {
+             if ((event.x >= enrichX - 8 && event.x <= enrichX + 8) || 
+                 (event.x >= detailX - 8 && event.x <= detailX + 8)) {
                  canvas.style.cursor = 'pointer';
              } else {
                  canvas.style.cursor = 'default';
              }
-        } else if (e.offsetY < theme.headerHeight) {
-            const { colIndex, onEdge } = this.getHeaderAt(e.offsetX);
+        } else if (event.target === 'header') {
+            const { colIndex, onEdge } = this.getHeaderAt(event.x);
             
             if (onEdge) {
                 canvas.style.cursor = 'col-resize';
@@ -400,7 +442,7 @@ export class MouseHandler {
                 const visibleCols = this.engine.model.getVisibleColumns();
                 const totalWidth = visibleCols.reduce((sum, c) => sum + c.width, 0);
                 const { scrollLeft } = this.engine.viewport.getState();
-                const x = e.offsetX + scrollLeft - theme.rowHeaderWidth;
+                const x = event.x + scrollLeft - theme.rowHeaderWidth;
                 
                 if (x >= totalWidth && x < totalWidth + 50) {
                     canvas.style.cursor = 'pointer'; // Ghost column
@@ -408,7 +450,7 @@ export class MouseHandler {
                     canvas.style.cursor = 'default';
                 }
             }
-        } else if (selection && this.isClickOnFillHandle(e.offsetX, e.offsetY, selection)) {
+        } else if (selection && this.isClickOnFillHandle(event.x, event.y, selection)) {
             canvas.style.cursor = 'crosshair';
         } else if (!isFilling) {
             canvas.style.cursor = 'default';
@@ -416,13 +458,17 @@ export class MouseHandler {
 
         // 4. Handle Cell Drag Operations
         if (isFilling && selection) {
-            this.updateFillRange(e.offsetX, e.offsetY, selection);
+            this.updateFillRange(event.x, event.y, selection);
         } else if (this.isDragging && this.dragStart) {
-            this.updateDragSelection(e.offsetX, e.offsetY);
+            this.updateDragSelection(event.x, event.y);
         }
     };
 
     handleMouseUp = (e: MouseEvent) => {
+        const inputEvent = this.createInputEvent(e);
+        const event = this.engine.eventNormalizer.normalizeEvent(inputEvent);
+        if (!event) return; // Should we continue to reset state even if event is null? Yes.
+
         const { isFilling, selection, fillRange } = this.engine.store.getState();
         const { theme } = this.engine;
         const { scrollTop } = this.engine.viewport.getState();
@@ -433,7 +479,7 @@ export class MouseHandler {
 
         // Handle Row Reorder Drop
         if (this.isReorderingRow && this.rowReorderCandidate) {
-            const targetRow = Math.floor((e.offsetY - theme.headerHeight + scrollTop) / theme.rowHeight);
+            const targetRow = Math.floor((event.y - theme.headerHeight + scrollTop) / theme.rowHeight);
             const rowCount = this.engine.rows.getRowCount();
             const validTarget = Math.max(0, Math.min(rowCount - 1, targetRow));
             
@@ -450,7 +496,7 @@ export class MouseHandler {
 
         // Handle Reorder Drop
         if (this.isReordering && this.reorderCandidate) {
-            const targetIndex = this.calculateReorderTarget(e.clientX);
+            const targetIndex = this.calculateReorderTarget(e.clientX, event.x);
             if (targetIndex !== this.reorderCandidate.colIndex) {
                 this.engine.moveColumn(this.reorderCandidate.colIndex, targetIndex);
             }
@@ -462,8 +508,8 @@ export class MouseHandler {
         }
 
         // Handle Column Selection (Click on Header)
-        if (e.offsetY < theme.headerHeight && !this.isResizing && !this.isReordering) {
-            const { colIndex, xInCol } = this.getHeaderAt(e.offsetX);
+        if (event.target === 'header' && !this.isResizing && !this.isReordering) {
+            const { colIndex, xInCol } = this.getHeaderAt(event.x);
             const visibleCols = this.engine.model.getVisibleColumns();
             
             if (colIndex >= 0) {
@@ -488,28 +534,21 @@ export class MouseHandler {
     };
 
     handleDoubleClick = (e: MouseEvent) => {
-        const { theme } = this.engine;
-        if (e.offsetY < theme.headerHeight) {
-            const { colIndex, onEdge } = this.getHeaderAt(e.offsetX);
+        const inputEvent = this.createInputEvent(e);
+        const event = this.engine.eventNormalizer.normalizeEvent(inputEvent);
+        if (!event) return;
+
+        if (event.target === 'header') {
+            const { colIndex, onEdge } = this.getHeaderAt(event.x);
             if (onEdge && colIndex >= 0) {
                 const column = this.engine.model.getVisibleColumns()[colIndex];
                 if (column) {
                     this.engine.autoResizeColumn(column.id);
                 }
             }
-        } else {
+        } else if (event.target === 'cell' && event.col >= 0 && event.row >= 0) {
             // Cell Double Click - Start Edit
-            const cell = this.engine.getCellPositionAt(e.offsetX, e.offsetY);
-            if (cell) {
-                 const visibleCols = this.engine.model.getVisibleColumns();
-                 const allCols = this.engine.model.getColumns();
-                 const trueColId = allCols[cell.col].id;
-                 const visibleIndex = visibleCols.findIndex(c => c.id === trueColId);
-                 
-                 if (visibleIndex !== -1) {
-                     this.engine.startEdit(cell.row, visibleIndex);
-                 }
-            }
+             this.engine.startEdit(event.row, event.col);
         }
     };
 
@@ -520,59 +559,56 @@ export class MouseHandler {
     };
 
     private handleContextMenu(e: MouseEvent) {
-        const { theme } = this.engine;
-        const { scrollTop } = this.engine.viewport.getState();
+        const inputEvent = this.createInputEvent(e);
+        const event = this.engine.eventNormalizer.normalizeEvent(inputEvent);
+        if (!event) return;
         
         // Determine Context
         let contextType: 'cell' | 'row-header' | 'column-header' | 'grid-body' = 'grid-body';
         let args: any = {};
 
-        if (e.offsetY < theme.headerHeight) {
+        if (event.target === 'header') {
             // Disabled context menu for column headers as requested
             return;
-        } else if (e.offsetX < theme.rowHeaderWidth) {
+        } else if (event.target === 'row-header') {
             contextType = 'row-header';
-            const rowIndex = Math.floor((e.offsetY - theme.headerHeight + scrollTop) / theme.rowHeight);
-            args.row = rowIndex;
-        } else {
-            const cell = this.engine.getCellPositionAt(e.offsetX, e.offsetY);
-            if (cell) {
-                contextType = 'cell';
-                args.row = cell.row;
-                args.col = cell.col;
+            args.row = event.row;
+        } else if (event.target === 'cell') {
+            contextType = 'cell';
+            args.row = event.row;
+            args.col = event.col;
 
-                // Check if we need to select the cell (if not already part of selection)
-                const { selection } = this.engine.store.getState();
-                let isSelected = false;
-                if (selection) {
-                    // Check if cell is in any range
-                    for (const range of selection.ranges) {
-                        if (cell.row >= range.start.row && cell.row <= range.end.row &&
-                            cell.col >= range.start.col && cell.col <= range.end.col) {
-                            isSelected = true;
-                            break;
-                        }
+            // Check if we need to select the cell (if not already part of selection)
+            const { selection } = this.engine.store.getState();
+            let isSelected = false;
+            if (selection) {
+                // Check if cell is in any range
+                for (const range of selection.ranges) {
+                    if (args.row >= range.start.row && args.row <= range.end.row &&
+                        args.col >= range.start.col && args.col <= range.end.col) {
+                        isSelected = true;
+                        break;
                     }
                 }
+            }
 
-                if (!isSelected) {
-                    // Select the cell
-                    this.engine.store.setState({
-                        selection: {
-                            primary: cell,
-                            ranges: [{ start: cell, end: cell }]
-                        }
-                    });
-                    this.engine.render(); // Re-render to show selection
-                }
+            if (!isSelected) {
+                // Select the cell
+                this.engine.store.setState({
+                    selection: {
+                        primary: { row: args.row, col: args.col },
+                        ranges: [{ start: { row: args.row, col: args.col }, end: { row: args.row, col: args.col } }]
+                    }
+                });
+                this.engine.render(); // Re-render to show selection
+            }
 
-                // Add column ID and Type for easier lookups
-                const cols = this.engine.model.getColumns();
-                const colDef = cols[cell.col];
-                if (colDef) {
-                    args.columnId = colDef.id;
-                    args.cellType = colDef.type;
-                }
+            // Add column ID and Type for easier lookups
+            const cols = this.engine.model.getVisibleColumns();
+            const colDef = cols[args.col];
+            if (colDef) {
+                args.columnId = colDef.id;
+                args.cellType = colDef.type;
             }
         }
 
@@ -584,11 +620,6 @@ export class MouseHandler {
 
         // Emit event for UI to handle display
         if (items.length > 0) {
-            this.engine.store.setState({
-                // Optional: store active context menu in state if UI pulls from store
-                // activeContextMenu: { x: e.clientX, y: e.clientY, items }
-            });
-            
             this.engine.eventBus.emit('context-menu', {
                 x: e.clientX,
                 y: e.clientY,
@@ -600,17 +631,17 @@ export class MouseHandler {
 
     // --- Header Helpers ---
 
-    private handleHeaderMouseDown(e: MouseEvent) {
+    private handleHeaderMouseDown(e: MouseEvent, x: number) {
         const { theme } = this.engine;
         const { scrollLeft } = this.engine.viewport.getState();
-        const { colIndex, onEdge, xInCol } = this.getHeaderAt(e.offsetX);
+        const { colIndex, onEdge, xInCol } = this.getHeaderAt(x);
         const visibleCols = this.engine.model.getVisibleColumns();
 
         // 1. Check Ghost Column Click
         const totalWidth = visibleCols.reduce((sum, c) => sum + c.width, 0);
-        const x = e.offsetX + scrollLeft - theme.rowHeaderWidth;
+        const gridX = x + scrollLeft - theme.rowHeaderWidth;
         
-        if (x >= totalWidth - 5 && x < totalWidth + 55) {
+        if (gridX >= totalWidth - 5 && gridX < totalWidth + 55) {
             e.preventDefault();
             e.stopPropagation();
 
@@ -620,7 +651,7 @@ export class MouseHandler {
                  return;
             }
             
-            const offsetInGhost = x - totalWidth;
+            const offsetInGhost = gridX - totalWidth;
             const ghostStartX = e.clientX - offsetInGhost;
             const rect = (e.target as HTMLElement).getBoundingClientRect();
             
@@ -699,10 +730,10 @@ export class MouseHandler {
         };
     }
 
-    private updateReorderState(clientX: number) {
+    private updateReorderState(clientX: number, gridX: number) {
         if (!this.reorderCandidate) return;
         
-        const targetIndex = this.calculateReorderTarget(clientX);
+        const targetIndex = this.calculateReorderTarget(clientX, gridX);
 
         this.engine.store.setState({
             reorderState: {
@@ -714,7 +745,7 @@ export class MouseHandler {
         });
     }
 
-    private calculateReorderTarget(clientX: number): number {
+    private calculateReorderTarget(clientX: number, gridX: number): number {
         const { theme } = this.engine;
         const { scrollLeft } = this.engine.viewport.getState();
         const frozenWidth = this.engine.model.getFrozenWidth();
@@ -727,14 +758,16 @@ export class MouseHandler {
         const ghostWidth = draggedCol.width; 
         const dragOffset = this.reorderCandidate?.dragOffset ?? (ghostWidth / 2);
         
-        // Map ClientX to GridX logic
-        const adjustedX = clientX - theme.rowHeaderWidth;
-        let gridX = adjustedX;
+        // Map ClientX to GridX logic - already done by normalizer logic roughly
+        // But let's use the passed gridX (which is offsetX relative to canvas)
+        // Adjust gridX to account for scroll
+        const adjustedX = gridX - theme.rowHeaderWidth;
+        let effectiveGridX = adjustedX;
         if (adjustedX >= frozenWidth) {
-            gridX += scrollLeft;
+            effectiveGridX += scrollLeft;
         }
         
-        const ghostLeft = gridX - dragOffset;
+        const ghostLeft = effectiveGridX - dragOffset;
         const ghostRight = ghostLeft + ghostWidth;
 
         const candidates: number[] = [];
@@ -795,10 +828,6 @@ export class MouseHandler {
                     return { colIndex: i, onEdge: true, xInCol };
                 }
                 if (xInCol <= edgeThreshold && i > 0) {
-                    // Check if previous column is visible/valid to resize?
-                    // If i is first scrollable column, i-1 is last frozen column.
-                    // Resizing boundary between frozen and scrollable?
-                    // It should work fine.
                     return { colIndex: i - 1, onEdge: true, xInCol };
                 }
                 return { colIndex: i, onEdge: false, xInCol };
@@ -861,6 +890,7 @@ export class MouseHandler {
     }
 
     private updateFillRange(x: number, y: number, selection: any) {
+        // Re-use normalizer? Or logic matches `getCellPositionAt`
         const cell = this.engine.getCellPositionAt(x, y);
         if (!cell) return;
 

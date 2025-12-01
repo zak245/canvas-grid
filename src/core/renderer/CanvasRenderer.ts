@@ -1,24 +1,22 @@
 import { GridEngine } from '../engine/GridEngine';
 import { GridRow, GridColumn } from '../types/grid';
-import type { GridRenderer } from './types';
+import { BaseRenderer } from './types';
 import { cellTypeRegistry } from '../cell-types/registry';
 import type { CellRenderContext, CellTypeName } from '../cell-types/types';
 
 /**
  * CanvasRenderer - High-performance canvas-based grid renderer
  * 
- * Implements the GridRenderer interface for pluggable rendering.
+ * Implements the GridRenderer interface via BaseRenderer for pluggable rendering.
  * Optimized for 60fps rendering with 10K+ rows.
  */
-export class CanvasRenderer implements GridRenderer {
-    private engine: GridEngine | null = null;
+export class CanvasRenderer extends BaseRenderer {
     private ctx: CanvasRenderingContext2D | null = null;
     private canvas: HTMLCanvasElement | null = null;
-    private container: HTMLElement | null = null;
     private dpr: number = window.devicePixelRatio || 1;
 
     constructor(engine: GridEngine, ctx: CanvasRenderingContext2D) {
-        this.engine = engine;
+        super(engine);
         this.ctx = ctx;
         this.canvas = ctx.canvas;
     }
@@ -54,7 +52,7 @@ export class CanvasRenderer implements GridRenderer {
         this.canvas = null;
         this.ctx = null;
         this.container = null;
-        this.engine = null;
+        // engine is managed by BaseRenderer
     }
 
     /**
@@ -92,13 +90,6 @@ export class CanvasRenderer implements GridRenderer {
         this.canvas.height = rect.height * this.dpr;
         this.canvas.style.width = `${rect.width}px`;
         this.canvas.style.height = `${rect.height}px`;
-    }
-
-    /**
-     * Set the engine reference
-     */
-    setEngine(engine: GridEngine): void {
-        this.engine = engine;
     }
 
     // ===== Render Methods =====

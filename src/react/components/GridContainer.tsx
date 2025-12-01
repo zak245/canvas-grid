@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useStore } from 'zustand';
 import { useGridEngine } from '../hooks/useGridEngine';
 import { GridEngine } from '../../core/engine/GridEngine';
@@ -10,25 +11,27 @@ import { HeaderRenameInput } from '../../components/HeaderRenameInput';
 import { CellEditorOverlay } from '../../components/CellEditorOverlay';
 import { RowDetailDrawer } from '../../components/overlays/RowDetailDrawer';
 import { EnrichmentModal } from '../../components/overlays/EnrichmentModal';
+import { GridReact } from './GridReact';
 
 export interface GridContainerProps {
     engine: GridEngine;
     onAddColumnClick?: (column?: GridColumn) => void;
+    className?: string;
 }
 
 export const GridContainer: React.FC<GridContainerProps> = ({
     engine,
-    onAddColumnClick
+    onAddColumnClick,
+    className
 }) => {
-    const canvasRef = useGridEngine(engine);
-    const containerRef = React.useRef<HTMLDivElement>(null);
+    const containerRef = useGridEngine(engine);
+    const [reactContainer, setReactContainer] = useState<HTMLElement | null>(null);
     
     // Subscribe to store for UI state (Single Source of Truth)
     const activeHeaderMenu = useStore(engine.store, (state) => state.activeHeaderMenu);
     const activeAddColumnMenu = useStore(engine.store, (state) => state.activeAddColumnMenu);
     const editingHeader = useStore(engine.store, (state) => state.editingHeader);
     const activeColumnSettings = useStore(engine.store, (state) => state.activeColumnSettings);
-    const editingCell = useStore(engine.store, (state) => state.editingCell);
     const activeRowDetail = useStore(engine.store, (state) => state.activeRowDetail);
     const activeEnrichment = useStore(engine.store, (state) => state.activeEnrichment);
     
@@ -45,40 +48,40 @@ export const GridContainer: React.FC<GridContainerProps> = ({
             setDataVersion(v => v + 1);
         });
 
+        // React Renderer Integration
+        const subAttach = engine.on('renderer:attached', (payload) => {
+            if (payload.type === 'react') {
+                setReactContainer(payload.container);
+            }
+        });
+
+        const subDetach = engine.on('renderer:detached', () => {
+            setReactContainer(null);
+        });
+
+        // Check initial state (in case we missed event)
+        const renderer = engine.getRenderer();
+        if (renderer && renderer.getElement() && engine.getConfig()?.renderer === 'react') {
+             const el = renderer.getElement();
+             if (el && el.classList.contains('ds-grid-react-root')) {
+                 setReactContainer(el);
+             }
+        }
+
         return () => {
             unsubscribeData();
             unsubscribeSort();
+            subAttach();
+            subDetach();
         };
     }, [engine]);
 
-    // Scroll handler
-    useEffect(() => {
-        const handleWheel = (e: WheelEvent) => {
-            e.preventDefault();
-
-            // Freeze scroll if menu is open
-            let shouldFreeze = !!(activeHeaderMenu || activeAddColumnMenu || editingHeader || activeColumnSettings || editingCell);
-
-            if (shouldFreeze) {
-                return;
-            }
-
-            const columns = engine.model.getVisibleColumns();
-            const rows = engine.model.getAllRows();
-            const { scrollTop, scrollLeft } = engine.viewport.getState();
-            const totalWidth = columns.reduce((sum, col) => sum + col.width, 0) + 50;
-            const totalHeight = (rows.length + 1) * engine.theme.rowHeight;
-            const viewportState = engine.viewport.getState();
-            const newScrollLeft = Math.max(0, Math.min(totalWidth - viewportState.width + engine.theme.rowHeaderWidth, scrollLeft + e.deltaX));
-            const newScrollTop = Math.max(0, Math.min(totalHeight - viewportState.height + engine.theme.headerHeight, scrollTop + e.deltaY));
-            engine.scroll(newScrollTop, newScrollLeft);
-        };
-        const canvas = canvasRef.current;
-        if (canvas) canvas.addEventListener('wheel', handleWheel, { passive: false });
-        return () => canvas?.removeEventListener('wheel', handleWheel);
-    }, [engine, canvasRef, activeHeaderMenu, activeAddColumnMenu, editingHeader, activeColumnSettings, editingCell]);
-
-    // Menu Handlers
+    // Scroll handler - Removed explicit wheel handler here as InputController handles it now globally on the container
+    // We might need to ensure the container is focusable or input controller attaches to it.
+    // InputController attaches to the element returned by renderer. 
+    // If renderer is Canvas, it attaches to canvas inside this container.
+    // If renderer is HTML, it attaches to div inside this container.
+    
     const handleMenuAction = (action: string, columnId: string) => {
         if (action === 'sortAsc') engine.sort(columnId, 'asc');
         if (action === 'sortDesc') engine.sort(columnId, 'desc');
@@ -110,9 +113,15 @@ export const GridContainer: React.FC<GridContainerProps> = ({
     const allColumns = engine.model.getColumns();
 
     return (
-        <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-white">
-            {/* Canvas Grid */}
-            <canvas ref={canvasRef} className="block touch-none" />
+        <div className={`w-full h-full relative overflow-hidden bg-white ${className || ''}`}>
+            {/* Container for Renderer (Canvas/HTML/React) */}
+            <div ref={containerRef} className="w-full h-full" />
+            
+            {/* React Renderer Portal */}
+            {reactContainer && createPortal(
+                <GridReact engine={engine} />,
+                reactContainer
+            )}
 
             {/* Portals for Menus (Driven by Store) */}
             {activeHeaderMenu && (

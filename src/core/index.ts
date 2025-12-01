@@ -56,6 +56,7 @@ export type {
 export type { DataAdapter } from './adapters/DataAdapter';
 export { LocalAdapter } from './adapters/LocalAdapter';
 export { BackendAdapter } from './adapters/BackendAdapter';
+export { MockBackendAdapter } from './adapters/MockBackendAdapter'; // Added
 
 // Platform types
 export type { FetchParams, GridData, CellUpdate } from './types/platform';

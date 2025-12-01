@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useStore } from 'zustand';
 import { GridEngine } from '../core/engine/GridEngine';
 import { cellTypeRegistry } from '../core/cell-types/registry';
 import type { CellTypeName, CellEditor, EditorContext } from '../core/cell-types/types';
@@ -58,7 +59,7 @@ export const CellEditorOverlay: React.FC<CellEditorOverlayProps> = ({ engine, co
     const editorRef = useRef<CellEditor | null>(null);
     const containerElRef = useRef<HTMLDivElement>(null);
     
-    const editingCell = engine.store.getState().editingCell;
+    const editingCell = useStore(engine.store, (state) => state.editingCell);
     
     // Clean up editor on unmount or when editing stops
     useEffect(() => {
