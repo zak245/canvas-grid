@@ -11,21 +11,24 @@ import type {
 // ============================================================================
 
 export const TAG_COLORS = [
-  '#ef4444', // red
-  '#f97316', // orange
-  '#eab308', // yellow
-  '#22c55e', // green
-  '#14b8a6', // teal
-  '#3b82f6', // blue
-  '#8b5cf6', // purple
-  '#ec4899', // pink
-  '#6b7280', // gray
+  { bg: '#fee2e2', text: '#991b1b' }, // red-100, red-800
+  { bg: '#ffedd5', text: '#9a3412' }, // orange-100, orange-800
+  { bg: '#fef9c3', text: '#854d0e' }, // yellow-100, yellow-800
+  { bg: '#dcfce7', text: '#166534' }, // green-100, green-800
+  { bg: '#ccfbf1', text: '#115e59' }, // teal-100, teal-800
+  { bg: '#dbeafe', text: '#1e40af' }, // blue-100, blue-800
+  { bg: '#ede9fe', text: '#6b21a8' }, // purple-100, purple-800
+  { bg: '#fce7f3', text: '#9d174d' }, // pink-100, pink-800
+  { bg: '#f3f4f6', text: '#374151' }, // gray-100, gray-700
 ];
 
-export function getTagColor(label: string, options?: TagsTypeOptions): string {
+export function getTagColor(label: string, options?: TagsTypeOptions): { bg: string; text: string } {
   // Check if tag has a predefined color
   const predefined = options?.options?.find(t => t.label === label);
-  if (predefined?.color) return predefined.color;
+  if (predefined?.color) {
+      // If predefined is just a string (bg), we try to guess text or use dark default
+      return { bg: predefined.color, text: '#1f2937' };
+  }
   
   // Generate consistent color from label
   let hash = 0;
@@ -151,14 +154,15 @@ class TagsEditor implements CellEditor<string[]> {
     const { container, bounds, options } = this.context;
     const typeOptions = options as TagsTypeOptions | undefined;
     
+    const rect = container.getBoundingClientRect();
+
     // Create dropdown container
-    // Note: Parent container is already positioned at cell location
     this.container = document.createElement('div');
     Object.assign(this.container.style, {
-      position: 'absolute',
-      left: '0',
-      top: `${bounds.height}px`,
-      width: `${Math.max(bounds.width, 250)}px`,
+      position: 'fixed',
+      left: `${rect.left}px`,
+      top: `${rect.bottom}px`,
+      minWidth: `${Math.max(rect.width, 250)}px`,
       maxHeight: '300px',
       backgroundColor: '#fff',
       border: '1px solid #e5e7eb',
@@ -172,12 +176,12 @@ class TagsEditor implements CellEditor<string[]> {
     // Render current tags
     this.renderContent(typeOptions);
     
-    // Add to container
-    container.appendChild(this.container);
+    // Add to body to escape clipping
+    document.body.appendChild(this.container);
     
     // Click outside to close
     setTimeout(() => {
-      document.addEventListener('click', this.handleClickOutside);
+      document.addEventListener('mousedown', this.handleClickOutside);
     }, 0);
   }
 
@@ -282,12 +286,11 @@ class TagsEditor implements CellEditor<string[]> {
       alignItems: 'center',
       gap: '4px',
       padding: '4px 8px',
-      backgroundColor: color + '20',
-      border: `1px solid ${color}40`,
+      backgroundColor: color.bg,
       borderRadius: '12px',
       fontSize: '12px',
       fontWeight: '500',
-      color: color,
+      color: color.text,
       cursor: 'pointer',
     });
     
@@ -298,6 +301,9 @@ class TagsEditor implements CellEditor<string[]> {
       removeBtn.textContent = '×';
       removeBtn.style.marginLeft = '4px';
       removeBtn.style.fontSize = '14px';
+      removeBtn.style.opacity = '0.6';
+      removeBtn.addEventListener('mouseenter', () => { removeBtn.style.opacity = '1'; });
+      removeBtn.addEventListener('mouseleave', () => { removeBtn.style.opacity = '0.6'; });
       removeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this.removeTag(label);
@@ -328,7 +334,7 @@ class TagsEditor implements CellEditor<string[]> {
   };
 
   unmount(): void {
-    document.removeEventListener('click', this.handleClickOutside);
+    document.removeEventListener('mousedown', this.handleClickOutside);
     if (this.container) {
       this.container.remove();
       this.container = null;

@@ -16,7 +16,7 @@ export interface EditingManagerDeps {
   model: GridModel;
   eventBus: EventBus;
   lifecycle: LifecycleHooks;
-  getCanvas: () => HTMLCanvasElement | null;
+  getCanvas: () => HTMLElement | null;
 }
 
 export interface EditingState {

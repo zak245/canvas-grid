@@ -258,7 +258,7 @@ export default function App() {
                         className={`px-3 py-1 text-sm rounded-md transition-colors ${mode === 'triple' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:text-gray-900'}`}
                         onClick={() => setMode('triple')}
                     >
-                        Triple Engine
+                    Single sheets
                     </button>
                 </div>
             </header>

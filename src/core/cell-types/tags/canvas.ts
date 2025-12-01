@@ -26,7 +26,7 @@ export const tagsCellRenderer: CanvasCellRenderer<string[]> = {
       const color = getTagColor(tag, typeOptions);
       
       // Measure tag width
-      ctx.font = `${theme.fontSize - 2}px ${theme.fontFamily}`;
+      ctx.font = `500 ${theme.fontSize - 2}px ${theme.fontFamily}`;
       const textWidth = ctx.measureText(tag).width;
       const tagWidth = textWidth + tagPadding * 2;
       
@@ -44,12 +44,8 @@ export const tagsCellRenderer: CanvasCellRenderer<string[]> = {
       }
       
       // Draw tag background (pill shape)
-      ctx.fillStyle = color + '20'; // 12% opacity
+      ctx.fillStyle = color.bg;
       ctx.beginPath();
-      // Use roundRect if available, else fallback to arc + rect or similar polyfill if strictly needed
-      // but most modern canvas implementations support roundRect now.
-      // If type definition is missing roundRect, we can cast ctx or add a polyfill helper.
-      // Assuming roundRect exists or is polyfilled. If not, use simpler drawing.
       if (ctx.roundRect) {
           ctx.roundRect(currentX, centerY, tagWidth, tagHeight, tagHeight / 2);
       } else {
@@ -67,13 +63,8 @@ export const tagsCellRenderer: CanvasCellRenderer<string[]> = {
       }
       ctx.fill();
       
-      // Draw tag border
-      ctx.strokeStyle = color + '40'; // 25% opacity
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      
       // Draw tag text
-      ctx.fillStyle = color;
+      ctx.fillStyle = color.text;
       ctx.font = `500 ${theme.fontSize - 2}px ${theme.fontFamily}`;
       ctx.textBaseline = 'middle';
       ctx.textAlign = 'center';

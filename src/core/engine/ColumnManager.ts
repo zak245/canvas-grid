@@ -15,7 +15,7 @@ export interface ColumnManagerDeps {
   adapter: DataAdapter | null;
   eventBus: EventBus;
   lifecycle: LifecycleHooks;
-  getCanvas: () => HTMLCanvasElement | null;
+  getCanvas: () => HTMLElement | null;
   render: () => void;
 }
 

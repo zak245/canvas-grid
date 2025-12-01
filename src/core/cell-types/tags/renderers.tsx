@@ -1,6 +1,8 @@
 import React from 'react';
 import type { CellRenderContext, HtmlCellRenderer, TagsTypeOptions } from '../../types';
 
+import { getTagColor } from './definition';
+
 export const tagsCellRenderer: HtmlCellRenderer<string[]> = {
   renderHtml: (context: CellRenderContext<string[]>) => {
     const { value, options } = context;
@@ -16,9 +18,7 @@ export const tagsCellRenderer: HtmlCellRenderer<string[]> = {
     if (tags.length === 0) return el;
     
     tags.forEach(tag => {
-        // Find tag definition if exists
-        const tagDef = opts?.options?.find(o => o.label === tag);
-        const color = tagDef?.color || opts?.defaultColor || '#e5e7eb';
+        const color = getTagColor(tag, opts);
         
         const badge = document.createElement('span');
         badge.textContent = tag;
@@ -26,8 +26,8 @@ export const tagsCellRenderer: HtmlCellRenderer<string[]> = {
         badge.style.borderRadius = '4px';
         badge.style.fontSize = '11px';
         badge.style.fontWeight = '500';
-        badge.style.backgroundColor = color;
-        badge.style.color = '#374151'; // Dark text usually safe on light bg
+        badge.style.backgroundColor = color.bg;
+        badge.style.color = color.text;
         badge.style.whiteSpace = 'nowrap';
         
         el.appendChild(badge);
@@ -46,14 +46,13 @@ export const tagsCellRenderer: HtmlCellRenderer<string[]> = {
     return (
       <div className="flex items-center gap-1 overflow-hidden w-full">
         {tags.map((tag, i) => {
-            const tagDef = opts?.options?.find(o => o.label === tag);
-            const color = tagDef?.color || opts?.defaultColor || '#e5e7eb';
+            const color = getTagColor(tag, opts);
             
             return (
                 <span 
                     key={i}
                     className="px-1.5 py-0.5 rounded text-[11px] font-medium whitespace-nowrap"
-                    style={{ backgroundColor: color, color: '#374151' }}
+                    style={{ backgroundColor: color.bg, color: color.text }}
                 >
                     {tag}
                 </span>

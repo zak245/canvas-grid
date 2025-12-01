@@ -135,6 +135,96 @@ const GroupHeader: React.FC<{
     );
 };
 
+const AddRowFooter: React.FC<{
+    theme: any;
+    top: number;
+    engine: GridEngine;
+    visibleColumns: any[];
+    pinnedColumns: any[];
+    scrollableGridX: number;
+    scrollLeft: number;
+    width: number;
+}> = ({ theme, top, engine, visibleColumns, pinnedColumns, scrollableGridX, scrollLeft, width }) => {
+    const rowsToAdd = useStore(engine.store, (state) => state.rowsToAdd);
+
+    return (
+        <div style={{
+            position: 'absolute',
+            top,
+            left: 0,
+            width: '100%',
+            height: theme.rowHeight,
+        }}>
+            {/* Background Cells */}
+            {[...pinnedColumns, ...visibleColumns.filter(c => !c.pinned)].map(col => {
+                const isPinned = !!col.pinned;
+                let left = 0;
+                if (isPinned) {
+                    left = theme.rowHeaderWidth;
+                    const pIdx = pinnedColumns.indexOf(col);
+                    for(let p=0; p<pIdx; p++) left += pinnedColumns[p].width;
+                } else {
+                    const scrollableSet = visibleColumns.filter(c => !c.pinned);
+                    const idx = scrollableSet.indexOf(col);
+                    let currentLogicalX = scrollableGridX;
+                    for(let k=0; k<idx; k++) currentLogicalX += scrollableSet[k].width;
+                    left = theme.rowHeaderWidth + (currentLogicalX - scrollLeft);
+                }
+
+                if (left + col.width <= theme.rowHeaderWidth || left >= width) return null;
+
+                return (
+                    <div key={col.id} style={{
+                        position: 'absolute',
+                        left,
+                        width: col.width,
+                        height: '100%',
+                        backgroundColor: '#f9fafb',
+                        borderRight: `1px solid ${theme.gridLineColor}`,
+                        borderBottom: `1px solid ${theme.gridLineColor}`,
+                        zIndex: isPinned ? 10 : 1
+                    }} />
+                );
+            })}
+
+            {/* Controls */}
+            <div style={{
+                position: 'absolute',
+                left: theme.rowHeaderWidth + 12,
+                top: 4,
+                height: theme.rowHeight - 8,
+                display: 'flex',
+                alignItems: 'center',
+                zIndex: 20,
+                pointerEvents: 'none'
+            }}>
+                <div style={{
+                    width: 40,
+                    height: '100%',
+                    backgroundColor: '#fff',
+                    border: '1px solid #d1d5db',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 10,
+                    fontSize: theme.fontSize,
+                    fontFamily: theme.fontFamily,
+                    color: '#374151'
+                }}>
+                    {rowsToAdd}
+                </div>
+                <div style={{
+                    color: '#6b7280',
+                    fontSize: theme.fontSize,
+                    fontFamily: theme.fontFamily
+                }}>
+                    + Add Rows
+                </div>
+            </div>
+        </div>
+    );
+};
+
 export const GridReact: React.FC<GridReactProps> = ({ engine }) => {
     // Subscribe to engine render signals AND selection changes
     // The flickering happens because selection update doesn't trigger a render here immediately
@@ -441,6 +531,28 @@ export const GridReact: React.FC<GridReactProps> = ({ engine }) => {
                         </React.Fragment>
                     );
                 })}
+
+                {/* Add Row Footer */}
+                {(() => {
+                    const totalRows = engine.rows.getRowCount();
+                    const addRowY = (totalRows * theme.rowHeight) - scrollTop;
+                    
+                    if (addRowY < (height - theme.headerHeight)) {
+                        return (
+                            <AddRowFooter 
+                                theme={theme}
+                                top={addRowY}
+                                engine={engine}
+                                visibleColumns={visibleColumns}
+                                pinnedColumns={pinnedColumns}
+                                scrollableGridX={scrollableGridX}
+                                scrollLeft={scrollLeft}
+                                width={width}
+                            />
+                        );
+                    }
+                    return null;
+                })()}
             </div>
         </div>
     );

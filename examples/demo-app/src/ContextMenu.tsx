@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { GridEngine } from '@grid-engine/core';
 import type { MenuItem } from '@grid-engine/core/types/platform';
-import { Scissors, Copy, Clipboard, Trash, Layers, Ungroup } from 'lucide-react';
+import { Scissors, Copy, Clipboard, Trash, Layers, Ungroup, Plus } from 'lucide-react';
 
 interface ContextMenuProps {
     engine: GridEngine;
@@ -13,7 +13,8 @@ const ICON_MAP: Record<string, React.ReactNode> = {
     'clipboard': <Clipboard size={14} />,
     'trash': <Trash size={14} />,
     'group': <Layers size={14} />,
-    'ungroup': <Ungroup size={14} />
+    'ungroup': <Ungroup size={14} />,
+    'plus': <Plus size={14} />
 };
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({ engine }) => {

@@ -124,8 +124,13 @@ export class EventNormalizer {
         // 4. Validation
         const rowCount = this.engine.rows.getRowCount();
         if (region === 'cell') {
-            if (rowIndex < 0 || rowIndex >= rowCount) return null;
-            if (colIndex === -1) return null;
+            // Allow interaction with "Add Row" footer (row immediately after last row)
+            if (rowIndex === rowCount) {
+                region = 'footer' as any;
+            } else {
+                if (rowIndex < 0 || rowIndex >= rowCount) return null;
+                if (colIndex === -1) return null;
+            }
         }
 
         // 5. Hit Test / Action Detection

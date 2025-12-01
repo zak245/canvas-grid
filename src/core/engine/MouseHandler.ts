@@ -97,8 +97,8 @@ export class MouseHandler {
         // 0. Check Row Header Interaction
         if (event.target === 'corner') {
             // Toggle Select All on any click in the corner region
-            this.engine.toggleSelectAllRows();
-            return;
+                this.engine.toggleSelectAllRows();
+                return;
         }
         
         if (event.target === 'row-header') {
@@ -217,7 +217,7 @@ export class MouseHandler {
                 input.style.position = 'absolute';
                 input.style.left = `${e.clientX - event.x + startX}px`; 
                 
-                const rect = (e.target as HTMLElement).getBoundingClientRect();
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                 
                 const inputCanvasY = addRowY - scrollTop + theme.headerHeight + 4;
                 const inputScreenY = rect.top + inputCanvasY;

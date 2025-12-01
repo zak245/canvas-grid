@@ -159,34 +159,36 @@ class SelectEditor implements CellEditor<string | string[]> {
   }
 
   mount(): void {
-    const { container, bounds } = this.context;
+    const { container } = this.context;
+    const rect = container.getBoundingClientRect();
     
     // Create dropdown container
-    // Note: Parent container is already positioned at cell location,
-    // so we position the dropdown relative to it (below the cell)
     this.container = document.createElement('div');
     Object.assign(this.container.style, {
-      position: 'absolute',
-      left: '0',
-      top: `${bounds.height}px`,
-      width: `${Math.max(bounds.width, 200)}px`,
+      position: 'fixed', // Use fixed to avoid clipping and z-index issues
+      left: `${rect.left}px`,
+      top: `${rect.bottom}px`,
+      minWidth: `${Math.max(rect.width, 200)}px`,
       maxHeight: '250px',
       overflowY: 'auto',
       backgroundColor: '#fff',
       border: '1px solid #e5e7eb',
       borderRadius: '6px',
       boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-      zIndex: '1000',
+      zIndex: '9999', // Ensure it's on top of everything
     });
     
     // Render options
     this.renderOptions();
     
-    // Click outside to close
-    document.addEventListener('mousedown', this.handleClickOutside);
-    document.addEventListener('keydown', this.handleKeyDown);
-    
-    container.appendChild(this.container);
+    // Append to body to escape grid clipping
+    document.body.appendChild(this.container);
+
+    // Delay listener to avoid catching the opening click event
+    setTimeout(() => {
+      document.addEventListener('mousedown', this.handleClickOutside);
+      document.addEventListener('keydown', this.handleKeyDown);
+    }, 0);
   }
 
   unmount(): void {

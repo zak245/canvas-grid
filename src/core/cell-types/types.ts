@@ -144,8 +144,12 @@ export type CellTypeName =
   | 'entity'
   | 'rating'
   | 'json'
-  | 'ai'
-  | 'action';
+  | 'ai-agent' // Renamed from 'ai' to 'ai-agent'
+  | 'action'
+  // Object types
+  | 'object'
+  | 'person'
+  | 'company';
 
 // ============================================================================
 // Type-Specific Options
@@ -223,6 +227,7 @@ export interface LinkedTypeOptions {
   searchFields?: string[];
   allowMultiple?: boolean;
   showAvatar?: boolean;
+  // Derived relationship options handled by RelationshipOptions in BaseTypeOptions
 }
 
 // New type options (Phase 2)
@@ -263,34 +268,87 @@ export interface JsonTypeOptions {
   expandable?: boolean;
 }
 
-export interface AITypeOptions {
-  mode?: 'streaming' | 'status' | 'enrichment';
-  showProgress?: boolean;
-}
-
 export interface ActionTypeOptions {
   buttons?: { id: string; icon: string; tooltip?: string; disabled?: boolean }[];
 }
 
+// ============================================================================
+// Object & Relationship Types
+// ============================================================================
+
+export interface ObjectFieldSchema {
+  key: string;
+  label: string;
+  type: CellTypeName;
+}
+
+export interface ObjectTypeOptions {
+  schema: ObjectFieldSchema[];
+  primaryKey: string; 
+}
+
+export interface RelationshipOptions {
+  sourceColumnId: string; 
+  sourceField: string;    
+  enabled: boolean;
+  linkType?: 'derived' | 'sync';
+}
+
+export interface DerivedValue<T = unknown> {
+  value: T;            
+  isOverride: boolean; 
+  sourceId?: string;   
+  linkedValue?: T;     
+}
+
+// ============================================================================
+// AI Agent Types
+// ============================================================================
+
+export interface AgentTypeOptions {
+  agentId?: string;
+  prompt?: string;
+  outputFormat?: 'text' | 'json' | 'markdown';
+  targetSchema?: ObjectFieldSchema[]; // Used if outputFormat is 'json'
+  trigger?: 'manual' | 'auto';
+}
+
+export interface AgentCellState<T = unknown> {
+  status: 'idle' | 'running' | 'success' | 'error';
+  progress?: number; // 0-100
+  result?: T;
+  error?: string;
+  timestamp?: number;
+}
+
+// ============================================================================
+// Base Type Options with Relationship
+// ============================================================================
+
+export interface BaseTypeOptions {
+  relationship?: RelationshipOptions;
+}
+
 export type TypeOptions = 
-  | TextTypeOptions 
-  | NumberTypeOptions 
-  | DateTypeOptions
-  | BooleanTypeOptions
-  | SelectTypeOptions
-  | EmailTypeOptions
-  | UrlTypeOptions
-  | PhoneTypeOptions
-  | ProgressTypeOptions
-  | LinkedTypeOptions
-  // New types (Phase 2)
-  | CurrencyTypeOptions
-  | TagsTypeOptions
-  | EntityTypeOptions
-  | RatingTypeOptions
-  | JsonTypeOptions
-  | AITypeOptions
-  | ActionTypeOptions;
+  | (TextTypeOptions & BaseTypeOptions)
+  | (NumberTypeOptions & BaseTypeOptions)
+  | (DateTypeOptions & BaseTypeOptions)
+  | (BooleanTypeOptions & BaseTypeOptions)
+  | (SelectTypeOptions & BaseTypeOptions)
+  | (EmailTypeOptions & BaseTypeOptions)
+  | (UrlTypeOptions & BaseTypeOptions)
+  | (PhoneTypeOptions & BaseTypeOptions)
+  | (ProgressTypeOptions & BaseTypeOptions)
+  | (LinkedTypeOptions & BaseTypeOptions)
+  // New types
+  | (CurrencyTypeOptions & BaseTypeOptions)
+  | (TagsTypeOptions & BaseTypeOptions)
+  | (EntityTypeOptions & BaseTypeOptions)
+  | (RatingTypeOptions & BaseTypeOptions)
+  | (JsonTypeOptions & BaseTypeOptions)
+  | (ActionTypeOptions & BaseTypeOptions)
+  | (ObjectTypeOptions & BaseTypeOptions)
+  | (AgentTypeOptions & BaseTypeOptions);
 
 // ============================================================================
 // Render Context

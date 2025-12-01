@@ -157,7 +157,7 @@ export class GridEngine {
             adapter: this.adapter,
             eventBus: this.eventBus,
             lifecycle: this.lifecycle,
-            getCanvas: () => this.canvas, // Need to rethink this getter if not canvas
+            getCanvas: () => this.renderer?.getElement() || null,
             render: () => this.render(),
         });
 
@@ -166,7 +166,7 @@ export class GridEngine {
             model: this.model,
             eventBus: this.eventBus,
             lifecycle: this.lifecycle,
-            getCanvas: () => this.canvas,
+            getCanvas: () => this.renderer?.getElement() || null,
         });
 
         this._historyManager = new HistoryManager(50);

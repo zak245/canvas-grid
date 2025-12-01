@@ -495,6 +495,90 @@ export class HtmlRenderer extends BaseRenderer {
         this.headerContainer.appendChild(fragment);
     }
 
+    private createAddRowFooter(
+        top: number, 
+        theme: any, 
+        visibleColumns: any[], 
+        pinnedColumns: any[], 
+        scrollableGridX: number, 
+        scrollLeft: number
+    ): HTMLElement {
+        const footer = document.createElement('div');
+        footer.style.position = 'absolute';
+        footer.style.top = `${top}px`;
+        footer.style.left = '0';
+        footer.style.width = '100%';
+        footer.style.height = `${theme.rowHeight}px`;
+        
+        // Background cells
+        const allCols = [...pinnedColumns, ...visibleColumns.filter((c: any) => !c.pinned)];
+        let currentScrollableX = scrollableGridX || 0;
+        let pinnedX = theme.rowHeaderWidth;
+        
+        allCols.forEach(col => {
+            const cell = document.createElement('div');
+            let left = 0;
+            if (col.pinned) {
+                left = pinnedX;
+                pinnedX += col.width;
+                cell.style.zIndex = '10';
+            } else {
+                left = theme.rowHeaderWidth + (currentScrollableX - scrollLeft);
+                currentScrollableX += col.width;
+            }
+            
+            // Only render if visible
+            if (left + col.width > theme.rowHeaderWidth && left < this.engine.viewport.getState().width) {
+                cell.style.position = 'absolute';
+                cell.style.left = `${left}px`;
+                cell.style.width = `${col.width}px`;
+                cell.style.height = '100%';
+                cell.style.backgroundColor = '#f9fafb';
+                cell.style.borderRight = `1px solid ${theme.gridLineColor}`;
+                cell.style.borderBottom = `1px solid ${theme.gridLineColor}`;
+                footer.appendChild(cell);
+            }
+        });
+        
+        // Input and Text
+        const controls = document.createElement('div');
+        controls.style.position = 'absolute';
+        controls.style.left = `${theme.rowHeaderWidth + 12}px`;
+        controls.style.top = '4px';
+        controls.style.height = `${theme.rowHeight - 8}px`;
+        controls.style.display = 'flex';
+        controls.style.alignItems = 'center';
+        controls.style.zIndex = '20';
+        controls.style.pointerEvents = 'none'; // Pass clicks to MouseHandler
+        
+        const input = document.createElement('div');
+        input.style.width = '40px';
+        input.style.height = '100%';
+        input.style.backgroundColor = '#fff';
+        input.style.border = '1px solid #d1d5db';
+        input.style.display = 'flex';
+        input.style.alignItems = 'center';
+        input.style.justifyContent = 'center';
+        input.style.marginRight = '10px';
+        input.textContent = String(this.engine.store.getState().rowsToAdd);
+        input.style.fontSize = `${theme.fontSize}px`;
+        input.style.fontFamily = theme.fontFamily;
+        input.style.color = '#374151';
+        
+        const text = document.createElement('div');
+        text.textContent = '+ Add Rows';
+        text.style.color = '#6b7280';
+        text.style.fontSize = `${theme.fontSize}px`;
+        text.style.fontFamily = theme.fontFamily;
+        
+        controls.appendChild(input);
+        controls.appendChild(text);
+        
+        footer.appendChild(controls);
+        
+        return footer;
+    }
+
     private renderBody(
         visibleRows: any[], 
         rowStartIndex: number, 
@@ -603,6 +687,17 @@ export class HtmlRenderer extends BaseRenderer {
         });
 
         this.bodyContainer.appendChild(fragment);
+
+        // Add Row Footer
+        const totalRows = this.engine.rows.getRowCount();
+        const addRowY = (totalRows * theme.rowHeight) - scrollTop;
+        const containerHeight = this.engine.viewport.getState().height - theme.headerHeight;
+
+        if (addRowY < containerHeight) {
+            this.bodyContainer.appendChild(
+                this.createAddRowFooter(addRowY, theme, visibleColumns, pinnedColumns, scrollableGridX, scrollLeft)
+            );
+        }
     }
 }
 
